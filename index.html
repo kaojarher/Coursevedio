@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>課程影片產線規劃器</title>
+<style>
+:root{--bg:#f3f5f2;--sf:#fff;--tx:#1d2420;--mu:#66726b;--bd:#d5dcd7;--ac:#1f6f5c;--ac2:#e8f2ee;--wn:#b4531c;--ok:#2f7d3a}
+@media (prefers-color-scheme:dark){:root{--bg:#141a17;--sf:#1d2521;--tx:#e6ece8;--mu:#93a39a;--bd:#33403a;--ac:#5fc2a6;--ac2:#22332d;--wn:#e8955a;--ok:#74c47e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--sf);border-bottom:1px solid var(--bd);padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+header h1{font-size:1.1rem;margin:0;flex:1 1 200px}
+button,select,input,textarea{font:inherit;color:inherit}
+button{background:var(--ac);color:#fff;border:0;border-radius:6px;padding:7px 14px;cursor:pointer}
+button.g{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+button.d{background:transparent;color:var(--wn);border:1px solid var(--wn);padding:4px 10px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+main{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:18px}
+section{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:16px}
+h2{font-size:1.05rem;margin:0 0 4px}
+.hint{color:var(--mu);font-size:.85rem;margin:0 0 12px}
+label{display:block;font-size:.82rem;color:var(--mu);margin-bottom:2px}
+input,textarea,select{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:7px 9px}
+textarea{resize:vertical;min-height:84px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.stage{border:1px solid var(--bd);border-radius:8px;padding:10px;display:grid;gap:6px}
+.stage b{font-size:.95rem}
+.row{display:flex;gap:6px;align-items:center;font-size:.85rem}
+.row input[type=checkbox]{width:auto}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{background:var(--ac2);border-radius:99px;padding:3px 12px;font-size:.85rem}
+.scene{border:1px solid var(--bd);border-left:4px solid var(--ac);border-radius:8px;padding:12px;margin-bottom:12px;display:grid;gap:10px;grid-template-columns:1fr 1fr}
+.scene .w{grid-column:1/-1}
+.scene[data-s=done]{border-left-color:var(--ok)}
+.scene[data-s=todo]{border-left-color:var(--bd)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+pre{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10px;overflow-x:auto;font-size:.8rem;white-space:pre-wrap;word-break:break-all}
+#msg{font-size:.85rem;color:var(--mu)}
+[hidden]{display:none!important}
+.ai{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-bottom:12px}
+.gen{display:grid;gap:10px;grid-template-columns:2fr 1fr auto;align-items:end}
+button:disabled{opacity:.55;cursor:wait}
+@media (max-width:640px){.gen{grid-template-columns:1fr}}
+@media (max-width:640px){.scene{grid-template-columns:1fr}header button{flex:1}}
+</style>
+</head>
+<body>
+<header>
+<h1>課程影片產線規劃器</h1>
+<span id="msg" role="status"></span>
+<button id="exp">匯出 JSON</button>
+<button class="g" id="imp">匯入 JSON</button>
+<button class="g" id="rst">重設範本</button>
+<input type="file" id="file" accept=".json,application/json" hidden>
+</header>
+<main>
+<section>
+<h2>專案</h2>
+<p class="hint">資料自動存於本機瀏覽器，也可匯出成 JSON 檔備份或換電腦使用。</p>
+<label for="title">課程名稱</label><input id="title">
+</section>
+
+<section>
+<h2>AI 設定</h2>
+<p class="hint">可選 Puter AI，或自己選擇本機 LLM（Ollama、LM Studio 等）。API 金鑰只存在本機，匯出 JSON 時不會包含。</p>
+<div class="ai">
+<div><label for="prov">AI 來源</label><select id="prov"><option value="puter">Puter AI（雲端，需登入 Puter）</option><option value="ollama">Ollama（本機）</option><option value="openai">OpenAI 相容（LM Studio、llama.cpp 等）</option></select></div>
+<div id="epw"><label for="ep">服務位址</label><input id="ep" autocomplete="off"></div>
+<div><label for="mdl">模型名稱</label><input id="mdl" list="mlist" autocomplete="off"><datalist id="mlist"></datalist></div>
+<div id="keyw"><label for="key">API 金鑰（可留空）</label><input id="key" type="password" autocomplete="off"></div>
+</div>
+<div class="bar"><button class="g" id="det">偵測可用模型</button><button class="g" id="test">測試連線</button></div>
+<div class="gen">
+<div><label for="topic">AI 產生分鏡大綱：課程主題</label><input id="topic" placeholder="例如：新手學 Python 資料分析"></div>
+<div><label for="cnt">分鏡數</label><input id="cnt" type="number" min="1" max="20" value="5"></div>
+<button id="outline">AI 產生分鏡</button>
+</div>
+</section>
+
+<section>
+<h2>產線工具</h2>
+<p class="hint">講稿到合成的各環節，勾選代表該環節需付費。</p>
+<div class="grid" id="stages"></div>
+</section>
+
+<section>
+<h2>分鏡腳本</h2>
+<div class="stats" id="stats"></div>
+<div class="bar"><button id="add">新增分鏡</button><button class="g" id="md">匯出分鏡 Markdown</button><button class="g" id="ff">產生 FFmpeg 合成指令</button></div>
+<div id="scenes"></div>
+<pre id="out" hidden></pre>
+</section>
+</main>
+<script>
+const KEY="course-pipeline-v1";
+const STATUS={todo:"待處理",script:"講稿完成",media:"素材完成",done:"已合成"};
+const defaults=()=>({
+ title:"我的 AI 課程",ai:{provider:"puter",endpoint:"",model:"gpt-5-nano",key:""},
+ stages:[
+  {name:"講稿與課程設計",tool:"AI Agent",note:"全自動串接各步驟",paid:true},
+  {name:"配音",tool:"Gemini 語音生成",note:"有免費額度",paid:false},
+  {name:"生圖",tool:"MOSS 地端生圖模型",note:"開源、本機執行",paid:false},
+  {name:"動畫畫面",tool:"stickman-video-director",note:"開源",paid:false},
+  {name:"數字人形象",tool:"VRoid Studio",note:"建立 3D 講師",paid:false},
+  {name:"動作骨架",tool:"Mixamo",note:"真人動作資料",paid:false},
+  {name:"3D 講師驅動",tool:"three.js + three-vrm",note:"讓講師動起來",paid:false},
+  {name:"影片合成",tool:"FFmpeg",note:"合併畫面與音訊",paid:false}],
+ scenes:[{title:"開場介紹",script:"大家好，今天我們要學習……",voice:"intro.wav",visual:"講師站在白板前，標題動畫出現",motion:"揮手打招呼",secs:30,status:"todo"}]
+});
+let S;
+const $=id=>document.getElementById(id);
+function load(){try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}if(!S||!S.scenes)S=defaults();S.ai=Object.assign(defaults().ai,S.ai||{})}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){note("瀏覽器禁止自動存檔，請用匯出備份")}}
+let t;function note(m){$("msg").textContent=m;clearTimeout(t);t=setTimeout(()=>$("msg").textContent="",3000)}
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function render(){
+ $("title").value=S.title;renderAI();
+ $("stages").innerHTML=S.stages.map((g,i)=>`<div class="stage"><b>${esc(g.name)}</b>
+ <input data-st="${i}" data-k="tool" value="${esc(g.tool)}" aria-label="${esc(g.name)}工具">
+ <input data-st="${i}" data-k="note" value="${esc(g.note)}" aria-label="${esc(g.name)}備註">
+ <label class="row"><input type="checkbox" data-st="${i}" data-k="paid" ${g.paid?"checked":""}>需付費</label></div>`).join("");
+ renderScenes();
+}
+function renderScenes(){
+ const total=S.scenes.reduce((a,s)=>a+(+s.secs||0),0),done=S.scenes.filter(s=>s.status==="done").length;
+ $("stats").innerHTML=`<span class="chip">共 ${S.scenes.length} 段</span><span class="chip">總長 ${Math.floor(total/60)} 分 ${total%60} 秒</span><span class="chip">已合成 ${done} 段</span>`;
+ $("scenes").innerHTML=S.scenes.map((s,i)=>`<div class="scene" data-s="${s.status}">
+ <div><label>標題</label><input data-sc="${i}" data-k="title" value="${esc(s.title)}"></div>
+ <div><label>狀態</label><select data-sc="${i}" data-k="status">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===s.status?"selected":""}>${v}</option>`).join("")}</select></div>
+ <div class="w"><label>講稿</label><textarea data-sc="${i}" data-k="script">${esc(s.script)}</textarea></div>
+ <div><label>畫面描述</label><textarea data-sc="${i}" data-k="visual">${esc(s.visual)}</textarea></div>
+ <div><label>講師動作</label><textarea data-sc="${i}" data-k="motion">${esc(s.motion)}</textarea></div>
+ <div><label>配音檔名</label><input data-sc="${i}" data-k="voice" value="${esc(s.voice)}"></div>
+ <div><label>秒數</label><input type="number" min="0" data-sc="${i}" data-k="secs" value="${esc(s.secs)}"></div>
+ <div class="w bar"><button data-gs="${i}">AI 寫講稿</button><button data-gv="${i}">AI 寫畫面與動作</button><button class="g" data-up="${i}">上移</button><button class="g" data-dn="${i}">下移</button><button class="d" data-del="${i}">刪除</button></div></div>`).join("")||'<p class="hint">還沒有分鏡，按「新增分鏡」開始。</p>';
+}
+document.addEventListener("input",e=>{
+ const d=e.target.dataset,k=d.k;if(e.target.id==="title"){S.title=e.target.value;save();return}
+ if(d.st!==undefined){S.stages[d.st][k]=e.target.type==="checkbox"?e.target.checked:e.target.value;save()}
+ else if(d.sc!==undefined){S.scenes[d.sc][k]=e.target.value;save();if(k==="secs"||k==="status"){const p=e.target.closest(".scene");p.dataset.s=S.scenes[d.sc].status;const a=document.activeElement;const y=scrollY;if(k==="secs")updStats();else updStats()}}
+});
+function updStats(){const total=S.scenes.reduce((a,s)=>a+(+s.secs||0),0),done=S.scenes.filter(s=>s.status==="done").length;
+ $("stats").innerHTML=`<span class="chip">共 ${S.scenes.length} 段</span><span class="chip">總長 ${Math.floor(total/60)} 分 ${total%60} 秒</span><span class="chip">已合成 ${done} 段</span>`}
+document.addEventListener("click",e=>{
+ const d=e.target.dataset;
+ if(d.del!==undefined&&confirm("確定刪除此分鏡？")){S.scenes.splice(d.del,1)}
+ else if(d.up!==undefined&&+d.up>0){const i=+d.up;[S.scenes[i-1],S.scenes[i]]=[S.scenes[i],S.scenes[i-1]]}
+ else if(d.dn!==undefined&&+d.dn<S.scenes.length-1){const i=+d.dn;[S.scenes[i+1],S.scenes[i]]=[S.scenes[i],S.scenes[i+1]]}
+ else return;
+ save();renderScenes();
+});
+$("add").onclick=()=>{S.scenes.push({title:"分鏡 "+(S.scenes.length+1),script:"",voice:`scene${S.scenes.length+1}.wav`,visual:"",motion:"",secs:30,status:"todo"});save();renderScenes()};
+function dl(name,text,type){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+const fname=()=>(S.title||"course").replace(/[\\/:*?"<>|\s]+/g,"_");
+$("exp").onclick=()=>{dl(fname()+".json",JSON.stringify({...S,ai:{...S.ai,key:""}},null,2),"application/json");note("已匯出 JSON")};
+$("imp").onclick=()=>$("file").click();
+$("file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+ r.onload=()=>{try{const j=JSON.parse(r.result);if(!Array.isArray(j.scenes)||!Array.isArray(j.stages))throw 0;const keep=S.ai;S=j;S.ai=keep;save();render();note("匯入成功")}catch(x){note("匯入失敗：檔案格式不符")}};
+ r.readAsText(f);e.target.value=""};
+$("rst").onclick=()=>{if(confirm("將清除目前內容並還原範本，確定嗎？")){S=defaults();save();render()}};
+function show(t){const o=$("out");o.hidden=false;o.textContent=t}
+$("md").onclick=()=>{const m=`# ${S.title}\n\n`+S.scenes.map((s,i)=>`## ${i+1}. ${s.title}（${s.secs} 秒，${STATUS[s.status]}）\n- 講稿：${s.script}\n- 畫面：${s.visual}\n- 講師動作：${s.motion}\n- 配音：${s.voice}\n`).join("\n");dl(fname()+".md",m,"text/markdown");show(m)};
+$("ff").onclick=()=>{const l=S.scenes.map((s,i)=>`# ${s.title}\nffmpeg -y -loop 1 -i scene${i+1}.png -i ${s.voice||"scene"+(i+1)+".wav"} -c:v libx264 -tune stillimage -c:a aac -pix_fmt yuv420p -shortest scene${i+1}.mp4`);
+ l.push("# 合併全部分鏡（需先建立 list.txt，每行：file 'sceneN.mp4'）","ffmpeg -y -f concat -safe 0 -i list.txt -c copy output.mp4");show(l.join("\n"));note("指令為範本，請依實際素材檔名調整")};
+
+const PROV={puter:{ep:"",m:"gpt-5-nano"},ollama:{ep:"http://localhost:11434",m:""},openai:{ep:"http://localhost:1234/v1",m:""}};
+const SYS="你是繁體中文課程影片編劇。直接輸出所需內容，不加寒暄與額外說明。";
+const SYSJ=SYS+"只輸出合法 JSON，不使用 Markdown 圍欄。";
+function renderAI(){const a=S.ai;$("prov").value=a.provider;$("ep").value=a.endpoint;$("mdl").value=a.model;$("key").value=a.key;$("epw").hidden=$("keyw").hidden=a.provider==="puter"}
+$("prov").onchange=e=>{const p=e.target.value;S.ai.provider=p;S.ai.endpoint=PROV[p].ep;S.ai.model=PROV[p].m;save();renderAI()};
+[["ep","endpoint"],["mdl","model"],["key","key"]].forEach(([id,k])=>$(id).oninput=e=>{S.ai[k]=e.target.value;save()});
+function say(m,ms){$("msg").textContent=m;clearTimeout(t);t=setTimeout(()=>$("msg").textContent="",ms||8000)}
+function fail(e){say(e instanceof TypeError?"連線失敗：請確認服務已啟動，並已允許網頁跨來源存取（CORS）":"AI 錯誤："+(e.message||e))}
+function loadPuter(){return new Promise((ok,no)=>{if(window.puter)return ok();const s=document.createElement("script");s.src="https://js.puter.com/v2/";s.onload=ok;s.onerror=()=>no(new Error("無法載入 Puter，請確認網路"));document.head.appendChild(s)})}
+const txt=r=>{if(typeof r==="string")return r;const c=r?.message?.content??r?.text;return Array.isArray(c)?c.map(x=>x.text||"").join(""):String(c??"")};
+async function callAI(sys,user){
+ const a=S.ai,msgs=[{role:"system",content:sys},{role:"user",content:user}];
+ if(!a.model.trim())throw new Error("請先填寫模型名稱");
+ if(a.provider==="puter"){await loadPuter();return txt(await puter.ai.chat(msgs,{model:a.model}))}
+ const b=a.endpoint.replace(/\/+$/,""),h={"Content-Type":"application/json"};
+ if(a.key)h.Authorization="Bearer "+a.key;
+ const ol=a.provider==="ollama";
+ const r=await fetch(ol?b+"/api/chat":b+"/chat/completions",{method:"POST",headers:h,body:JSON.stringify({model:a.model,messages:msgs,stream:false})});
+ if(!r.ok)throw new Error("服務回應 "+r.status+"："+(await r.text()).slice(0,120));
+ const j=await r.json();return ol?j.message.content:j.choices[0].message.content;
+}
+const pj=x=>{const m=x.match(/[\[{][\s\S]*[\]}]/);if(!m)throw new Error("模型未回傳 JSON，請換較大的模型再試");return JSON.parse(m[0])};
+async function run(btn,fn){const o=btn.textContent;btn.disabled=true;btn.textContent="AI 處理中…";try{await fn()}catch(e){fail(e)}finally{btn.disabled=false;btn.textContent=o}}
+$("det").onclick=e=>run(e.target,async()=>{const a=S.ai;let list=[];
+ if(a.provider==="puter"){await loadPuter();if(!puter.ai.listModels)throw new Error("Puter 請手動輸入模型名稱");list=(await puter.ai.listModels()).map(x=>x.id||x)}
+ else{const b=a.endpoint.replace(/\/+$/,""),ol=a.provider==="ollama",h=a.key?{Authorization:"Bearer "+a.key}:{};
+  const r=await fetch(ol?b+"/api/tags":b+"/models",{headers:h});if(!r.ok)throw new Error("服務回應 "+r.status);const j=await r.json();
+  list=ol?j.models.map(m=>m.name):j.data.map(m=>m.id)}
+ $("mlist").innerHTML=list.map(n=>`<option value="${esc(n)}">`).join("");say(`找到 ${list.length} 個模型，點模型欄位即可選擇`)});
+$("test").onclick=e=>run(e.target,async()=>{const r=await callAI(SYS,"請只回覆「連線成功」四個字");say("測試結果："+r.trim().slice(0,30))});
+$("outline").onclick=e=>run(e.target,async()=>{const tp=$("topic").value.trim()||S.title,n=Math.min(20,Math.max(1,+$("cnt").value||5));
+ const arr=pj(await callAI(SYSJ,`課程主題：${tp}\n請設計 ${n} 段分鏡，輸出 JSON 陣列，每項含 title、script（口語講稿）、visual（畫面描述）、motion（3D 講師動作）、secs（秒數整數）。`));
+ if(!Array.isArray(arr))throw new Error("模型回傳格式不符");
+ arr.forEach(o=>S.scenes.push({title:o.title||"未命名",script:o.script||"",voice:`scene${S.scenes.length+1}.wav`,visual:o.visual||"",motion:o.motion||"",secs:+o.secs||30,status:"todo"}));
+ save();renderScenes();say(`已新增 ${arr.length} 段分鏡`)});
+document.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const d=b.dataset;
+ if(d.gs!==undefined)run(b,async()=>{const s=S.scenes[d.gs],n=Math.max(30,Math.round((+s.secs||30)/60*220));
+  const r=await callAI(SYS,`課程：${S.title}\n分鏡標題：${s.title}\n目前講稿：${s.script||"（無）"}\n請寫出約 ${n} 字的口語講稿，只輸出講稿本文。`);s.script=r.trim();save();renderScenes()});
+ if(d.gv!==undefined)run(b,async()=>{const s=S.scenes[d.gv];
+  const o=pj(await callAI(SYSJ,`課程：${S.title}\n分鏡標題：${s.title}\n講稿：${s.script}\n請輸出 JSON 物件，含 visual（畫面描述）與 motion（3D 講師動作）。`));
+  if(o.visual)s.visual=o.visual;if(o.motion)s.motion=o.motion;save();renderScenes()});
+});
+load();render();
+</script>
+</body>
+</html>
