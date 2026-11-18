@@ -41,6 +41,10 @@ pre{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10
 .ai{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-bottom:12px}
 .gen{display:grid;gap:10px;grid-template-columns:2fr 1fr auto;align-items:end}
 button:disabled{opacity:.55;cursor:wait}
+#cv,#pv{width:100%;height:auto;border-radius:8px;background:#000;margin-top:10px}
+.opt{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.opt label{display:flex;gap:6px;align-items:center;margin:0;color:var(--tx)}
+.opt input{width:auto}
 @media (max-width:640px){.gen{grid-template-columns:1fr}}
 @media (max-width:640px){.scene{grid-template-columns:1fr}header button{flex:1}}
 </style>
@@ -82,6 +86,22 @@ button:disabled{opacity:.55;cursor:wait}
 <h2>產線工具</h2>
 <p class="hint">講稿到合成的各環節，勾選代表該環節需付費。</p>
 <div class="grid" id="stages"></div>
+</section>
+
+<section>
+<h2>一鍵產生影片</h2>
+<p class="hint">依分鏡順序自動補講稿、生圖、配音，再在瀏覽器內合成為 WebM 影片。生圖與配音使用 Puter；錄製期間請保持此分頁在前景。</p>
+<div class="opt">
+<label><input type="checkbox" id="fill" checked>用 AI 補齊空白講稿</label>
+<label><input type="checkbox" id="usep" checked>用 Puter 生圖與配音</label>
+<label>3D 講師 VRM 檔（選填）<input type="file" id="vrm" accept=".vrm"></label>
+<label>2D 頭像（選填，無 VRM 時使用）<input type="file" id="av" accept="image/*"></label>
+</div>
+<canvas id="vp" width="270" height="480" hidden style="width:150px;height:auto;border-radius:8px;background:var(--ac2)"></canvas>
+<p class="hint">3D 講師會隨配音音量張嘴，並眨眼、輕微擺動。分鏡的「講師動作」若含「揮手」或「點頭」，會觸發對應動作。VRM 檔不會存檔，重新開啟頁面需再選一次。</p>
+<div class="bar"><button id="make">一鍵產生影片</button><a id="dlv" hidden><button class="g" type="button">下載影片</button></a><span id="prog" class="hint"></span></div>
+<canvas id="cv" width="1280" height="720" hidden></canvas>
+<video id="pv" controls playsinline hidden></video>
 </section>
 
 <section>
@@ -206,7 +226,105 @@ document.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)r
   const o=pj(await callAI(SYSJ,`課程：${S.title}\n分鏡標題：${s.title}\n講稿：${s.script}\n請輸出 JSON 物件，含 visual（畫面描述）與 motion（3D 講師動作）。`));
   if(o.visual)s.visual=o.visual;if(o.motion)s.motion=o.motion;save();renderScenes()});
 });
+
+let avImg=null;
+$("av").onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{avImg=im;say("已載入講師頭像",3000)};im.src=URL.createObjectURL(f)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function mkImage(q){try{await loadPuter();const im=await puter.ai.txt2img(q);if(im.decode)await im.decode();return im}catch(e){return null}}
+async function mkVoice(ac,q){try{await loadPuter();const a=await puter.ai.txt2speech(q.slice(0,2900));const b=await (await fetch(a.src)).arrayBuffer();return await ac.decodeAudioData(b)}catch(e){return null}}
+function wrapT(ctx,text,w){const out=[];let l="";for(const c of text){if(ctx.measureText(l+c).width>w){out.push(l);l=c}else l+=c}if(l)out.push(l);return out}
+function frame(ctx,img,s,cap,amp,el){
+ const W=1280,H=720;
+ if(img){const k=Math.max(W/img.width,H/img.height),w=img.width*k,h=img.height*k;ctx.drawImage(img,(W-w)/2,(H-h)/2,w,h)}
+ else{const g=ctx.createLinearGradient(0,0,W,H);g.addColorStop(0,"#1f6f5c");g.addColorStop(1,"#14302a");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#fff";ctx.textAlign="center";ctx.font="bold 56px sans-serif";ctx.fillText(s.title,W/2,H*.32)}
+ if(window.vrm3d&&vrm3d.has()){vrm3d.draw(ctx,W-400,H-640,360,640,amp,el,s.motion)}else if(avImg){const h=320,w=avImg.width/avImg.height*h;ctx.drawImage(avImg,W-w-40,H-h-20-amp*18,w,h)}
+ if(cap){ctx.font="34px sans-serif";ctx.textAlign="center";const ls=wrapT(ctx,cap,W-420).slice(0,3),bh=ls.length*46+26;
+  ctx.fillStyle="rgba(0,0,0,.62)";ctx.fillRect(40,H-bh-30,W-80,bh);ctx.fillStyle="#fff";ls.forEach((l,i)=>ctx.fillText(l,(W-80)/2+40-(avImg?150:0)*0,H-bh-30+44+i*46))}
+}
+async function playScene(ctx,ac,dest,an,s,a){
+ const sent=(s.script||"").match(/[^。！？!?\n]+[。！？!?]?/g)||[];
+ const dur=a.buf?a.buf.duration+.6:Math.max(3,(s.script||"").length/3.7);
+ if(a.buf){const src=ac.createBufferSource();src.buffer=a.buf;src.connect(dest);src.connect(an);src.start()}
+ const d=new Uint8Array(an.fftSize),t0=performance.now();
+ await new Promise(res=>{(function f(){const el=(performance.now()-t0)/1000;if(el>=dur)return res();
+  an.getByteTimeDomainData(d);let m=0;for(const v of d)m=Math.max(m,Math.abs(v-128));
+  frame(ctx,a.img,s,(sent[Math.min(sent.length-1,Math.floor(el/dur*sent.length))]||"").trim(),m/128,el);requestAnimationFrame(f)})()});
+}
+$("vrm").addEventListener("click",ev=>{if(!window.vrm3d){ev.preventDefault();say("3D 元件尚未載入，請確認網路後重新整理頁面")}});
+$("make").onclick=e=>{if(window.vrm3d)vrm3d.busy=true;run(e.target,async()=>{
+ const n=S.scenes.length;if(!n)throw new Error("請先建立分鏡");
+ if(!window.MediaRecorder)throw new Error("此瀏覽器不支援影片錄製，請改用 Chrome 或 Edge");
+ const fill=$("fill").checked,usep=$("usep").checked,cv=$("cv"),ctx=cv.getContext("2d"),pg=$("prog");
+ cv.hidden=false;$("pv").hidden=true;$("dlv").hidden=true;
+ const ac=new (window.AudioContext||window.webkitAudioContext)(),dest=ac.createMediaStreamDestination(),an=ac.createAnalyser();an.fftSize=1024;
+ const stream=new MediaStream([...cv.captureStream(30).getVideoTracks(),...dest.stream.getAudioTracks()]);
+ const mime=["video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"].find(m=>MediaRecorder.isTypeSupported(m));
+ if(!mime)throw new Error("瀏覽器不支援 WebM 錄製");
+ const assets=[];
+ for(let i=0;i<n;i++){const sc=S.scenes[i];pg.textContent=`準備素材 ${i+1}/${n}`;
+  if(fill&&!sc.script.trim()){sc.script=(await callAI(SYS,`課程：${S.title}\n分鏡標題：${sc.title}\n請寫出約 120 字的口語講稿，只輸出講稿本文。`)).trim();save()}
+  let img=null,buf=null;if(usep){img=await mkImage(sc.visual||sc.title);buf=sc.script?await mkVoice(ac,sc.script):null}
+  assets.push({img,buf})}
+ renderScenes();
+ const rec=new MediaRecorder(stream,{mimeType:mime}),chunks=[];rec.ondataavailable=ev=>ev.data.size&&chunks.push(ev.data);
+ rec.start();
+ for(let i=0;i<n;i++){pg.textContent=`錄製 ${i+1}/${n}（請勿切換分頁）`;await playScene(ctx,ac,dest,an,S.scenes[i],assets[i])}
+ await sleep(300);const stopped=new Promise(r=>rec.onstop=r);rec.stop();await stopped;ac.close();
+ const url=URL.createObjectURL(new Blob(chunks,{type:"video/webm"}));
+ $("pv").src=url;$("pv").hidden=false;const a=$("dlv");a.href=url;a.download=fname()+".webm";a.hidden=false;
+ pg.textContent=assets.some(x=>!x.buf)?"完成（部分分鏡沒有配音，請檢查 Puter 狀態）":"完成";
+}).finally(()=>{if(window.vrm3d)vrm3d.busy=false})};
 load();render();
+</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/","@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.5.3/lib/three-vrm.module.js"}}</script>
+<script type="module">
+import * as THREE from "three";
+import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+import {VRMLoaderPlugin,VRMUtils} from "@pixiv/three-vrm";
+const R=new THREE.WebGLRenderer({alpha:true,antialias:true});R.setClearColor(0x000000,0);
+const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(30,9/16,.1,20);
+const li=new THREE.DirectionalLight(0xffffff,2.2);li.position.set(1,2,2);sc.add(li,new THREE.AmbientLight(0xffffff,1.2));
+let vrm=null,mouth=0,head=1.4;
+const bone=n=>vrm&&vrm.humanoid&&vrm.humanoid.getNormalizedBoneNode(n);
+function pose(t,amp,motion){
+ mouth+=(Math.min(1,amp*2.2)-mouth)*.5;
+ const em=vrm.expressionManager;
+ if(em){em.setValue("aa",mouth);em.setValue("blink",(t%4)>3.88?1:0)}
+ const set=(n,x,y,z)=>{const b=bone(n);if(b)b.rotation.set(x,y,z)};
+ const wave=/揮手|招手|打招呼/.test(motion||""),nod=/點頭|同意|肯定/.test(motion||"");
+ set("leftUpperArm",0,0,-1.15);
+ if(wave){set("rightUpperArm",0,0,-1.3);set("rightLowerArm",0,0,Math.sin(t*7)*.5)}
+ else{set("rightUpperArm",0,0,1.15);set("rightLowerArm",0,0,0)}
+ set("spine",0,Math.sin(t*.8)*.04,0);
+ set("head",nod?Math.sin(t*4)*.15:Math.sin(t*1.3)*.03+mouth*.05,Math.sin(t*.6)*.06,0);
+ vrm.update(1/30);
+}
+function draw(ctx,x,y,w,h,amp,t,motion){
+ if(!vrm)return;
+ if(R.domElement.width!==w||R.domElement.height!==h){R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+ pose(t,amp,motion);
+ cam.position.set(0,head-.12,1.5);cam.lookAt(0,head-.28,0);
+ R.render(sc,cam);ctx.drawImage(R.domElement,x,y,w,h);
+}
+async function load(file){
+ const url=URL.createObjectURL(file),ld=new GLTFLoader();
+ ld.register(p=>new VRMLoaderPlugin(p));
+ let g;try{g=await ld.loadAsync(url)}finally{URL.revokeObjectURL(url)}
+ const v=g.userData.vrm;if(!v)throw new Error("這不是有效的 VRM 檔案");
+ if(vrm){sc.remove(vrm.scene);VRMUtils.deepDispose(vrm.scene)}
+ VRMUtils.removeUnnecessaryVertices(g.scene);VRMUtils.rotateVRM0(v);
+ vrm=v;sc.add(v.scene);v.scene.updateMatrixWorld(true);
+ head=bone("head").getWorldPosition(new THREE.Vector3()).y;
+}
+const vp=document.getElementById("vp"),pc=vp.getContext("2d");
+(function loop(){requestAnimationFrame(loop);if(!vrm||window.vrm3d.busy||vp.hidden)return;
+ pc.clearRect(0,0,vp.width,vp.height);const t=performance.now()/1000;
+ draw(pc,0,0,vp.width,vp.height,.35*Math.max(0,Math.sin(t*9)),t,"")})();
+window.vrm3d={has:()=>!!vrm,draw,busy:false};
+document.getElementById("vrm").onchange=async e=>{const f=e.target.files[0];if(!f)return;
+ try{window.say("讀取 VRM 中…",20000);await load(f);vp.hidden=false;window.say("已載入 3D 講師："+f.name,4000)}
+ catch(err){window.say("VRM 載入失敗："+err.message)}};
 </script>
 </body>
 </html>
