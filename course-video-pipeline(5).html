@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>課程影片產線規劃器（完整單檔整合版）</title>
+<style>
+:root{--bg:#f3f5f2;--sf:#fff;--tx:#1d2420;--mu:#66726b;--bd:#d5dcd7;--ac:#1f6f5c;--ac2:#e8f2ee;--wn:#b4531c;--ok:#2f7d3a}
+@media (prefers-color-scheme:dark){:root{--bg:#141a17;--sf:#1d2521;--tx:#e6ece8;--mu:#93a39a;--bd:#33403a;--ac:#5fc2a6;--ac2:#22332d;--wn:#e8955a;--ok:#74c47e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--sf);border-bottom:1px solid var(--bd);padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+header h1{font-size:1.1rem;margin:0;flex:1 1 200px}
+button,select,input,textarea{font:inherit;color:inherit}
+button{background:var(--ac);color:#fff;border:0;border-radius:6px;padding:7px 14px;cursor:pointer}
+button.g{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+button.d{background:transparent;color:var(--wn);border:1px solid var(--wn);padding:4px 10px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+main{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:18px}
+section{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:16px}
+h2{font-size:1.05rem;margin:0 0 4px}
+.hint{color:var(--mu);font-size:.85rem;margin:0 0 12px}
+label{display:block;font-size:.82rem;color:var(--mu);margin-bottom:2px}
+input,textarea,select{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:7px 9px}
+textarea{resize:vertical;min-height:84px}
+.row{display:flex;gap:6px;align-items:center;font-size:.85rem}
+.row input[type=checkbox]{width:auto}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{background:var(--ac2);border-radius:99px;padding:3px 12px;font-size:.85rem}
+.scene{border:1px solid var(--bd);border-left:4px solid var(--ac);border-radius:8px;padding:12px;margin-bottom:12px;display:grid;gap:10px;grid-template-columns:1fr 1fr}
+.scene .w{grid-column:1/-1}
+.scene[data-s=done]{border-left-color:var(--ok)}
+.scene[data-s=todo]{border-left-color:var(--bd)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+pre{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10px;overflow-x:auto;font-size:.8rem;white-space:pre-wrap;word-break:break-all}
+#msg{font-size:.85rem;color:var(--ac);font-weight:500}
+[hidden]{display:none!important}
+.ai{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-bottom:12px}
+.gen{display:grid;gap:10px;grid-template-columns:2fr 1fr auto;align-items:end}
+button:disabled{opacity:.55;cursor:wait}
+#cv.stage-fs{position:fixed;inset:0;z-index:9999;width:100vw;height:100vh;object-fit:contain;margin:0;border-radius:0;background:#000}
+#cv:fullscreen{width:100vw;height:100vh;object-fit:contain;margin:0;border-radius:0}
+#cv,#pv{width:100%;height:auto;border-radius:8px;background:#000;margin-top:10px}
+.opt{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:12px;background:var(--bg);padding:12px;border-radius:8px;border:1px solid var(--bd)}
+.opt label.chk{display:flex;gap:6px;align-items:center;margin:0;color:var(--tx);cursor:pointer}
+.opt input[type=checkbox]{width:auto}
+.vrm-box{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+#vp{cursor:grab;touch-action:none;width:140px;height:210px;border-radius:8px;background:var(--ac2);border:1px solid var(--bd);flex-shrink:0}
+@media (max-width:640px){.gen{grid-template-columns:1fr}.scene{grid-template-columns:1fr}header button{flex:1}}
+</style>
+</head>
+<body>
+<header>
+<h1>課程影片產線規劃器</h1>
+<span id="msg" role="status"></span>
+<button id="exp">匯出 JSON</button>
+<button class="g" id="imp">匯入 JSON</button>
+<button class="g" id="rst">重設範本</button>
+<input type="file" id="file" accept=".json,application/json" hidden>
+</header>
+<main>
+<section>
+<h2>專案</h2>
+<p class="hint">資料自動存於本機瀏覽器，也可匯出成 JSON 檔備份或換電腦使用。</p>
+<label for="title">課程名稱</label><input id="title">
+</section>
+
+<section>
+<h2>AI 設定</h2>
+<p class="hint">可選 Puter AI（免 API Key），或自己選擇本機 LLM（Ollama、LM Studio 等）。API 金鑰只存在本機，匯出 JSON 時不會包含。</p>
+<div class="ai">
+<div><label for="prov">AI 來源</label><select id="prov"><option value="puter">Puter AI（雲端，需登入 Puter）</option><option value="ollama">Ollama（本機）</option><option value="openai">OpenAI 相容（LM Studio、llama.cpp 等）</option></select></div>
+<div id="epw"><label for="ep">服務位址</label><input id="ep" autocomplete="off"></div>
+<div><label for="mdl">模型名稱</label><input id="mdl" list="mlist" autocomplete="off"><datalist id="mlist"></datalist></div>
+<div id="keyw"><label for="key">API 金鑰（可留空）</label><input id="key" type="password" autocomplete="off"></div>
+</div>
+<div class="bar"><button class="g" id="det">偵測可用模型</button><button class="g" id="test">測試連線</button></div>
+<div class="gen">
+<div><label for="topic">AI 產生分鏡大綱：課程主題</label><input id="topic" placeholder="例如：新手學 Python 資料分析"></div>
+<div><label for="cnt">分鏡數</label><input id="cnt" type="number" min="1" max="20" value="4"></div>
+<button id="outline">AI 產生分鏡</button>
+</div>
+</section>
+
+<section>
+<h2>錄製與播放教學影片（內建 3D 講師與完整中文配音）</h2>
+<p class="hint">操作步驟：<b>① 按「開始錄製」</b>，在分享視窗選好要錄製的畫面（建議「此分頁」）並勾選音訊（本機語音請選整個螢幕並勾選系統音訊）→ <b>② 設定完成後自動全螢幕播放</b>（預設為滿版畫面，不會改變擷取尺寸，錄影最穩定；準備素材的畫面也會被錄進去，想省掉可先按一次「▶ 播放」讓素材快取）→ <b>③ 播放結束自動停止錄製並下載</b>。播放中按 Esc 可中止。也可以單獨按「▶ 播放」預覽。</p>
+
+<div class="opt">
+  <div>
+    <label for="vrm-preset">內建 3D 講師模型（自動載入）</label>
+    <select id="vrm-preset"></select>
+    <div id="vrm-license" class="hint" style="margin:4px 0 0;font-size:.75rem"></div>
+  </div>
+  <div>
+    <label for="vrm-default-pose">3D 講師預設 Pose（14 種・預設自然垂放）</label>
+    <select id="vrm-default-pose"></select>
+    <label for="vrm" style="margin-top:6px">或上傳自訂 VRM 檔（選填）</label>
+    <input type="file" id="vrm" accept=".vrm">
+  </div>
+  <div>
+    <label for="tts-mode">語音合成引擎</label>
+    <select id="tts-mode">
+      <option value="puter">Puter 雲端語音（推薦・可完整寫入影片音軌）</option>
+      <option value="webspeech">瀏覽器本機語音（需允許分頁音訊擷取）</option>
+    </select>
+    <label for="local-voice" style="margin-top:6px">本機備援語音（中文優先）</label>
+    <select id="local-voice"></select>
+  </div>
+  <div style="display:flex;flex-direction:column;justify-content:center;gap:8px">
+    <label class="chk"><input type="checkbox" id="fill" checked>自動用 AI 補齊空白講稿</label>
+    <label class="chk"><input type="checkbox" id="usep" checked>用 Puter 生成背景插圖</label>
+    <label for="vrm-scale">3D 講師畫面比例：<span id="vrm-scale-val">82%</span></label>
+    <input type="range" id="vrm-scale" min="60" max="110" step="2" value="82">
+  </div>
+</div>
+
+<div class="vrm-box">
+  <canvas id="vp" width="320" height="480"></canvas>
+  <div style="flex:1;min-width:220px">
+    <div id="vrm-status" style="font-weight:600;margin-bottom:4px">正在初始化 3D 講師引擎…</div>
+    <div class="opt" id="actor-adj" style="margin:0 0 8px">
+      <div><label>演員大小：<span id="ac-zoom-v"></span></label><input type="range" id="ac-zoom" min="50" max="220" step="2"></div>
+      <div><label>左右位置：<span id="ac-x-v"></span></label><input type="range" id="ac-x" min="-60" max="60" step="1"></div>
+      <div><label>上下位置（調高＝看到更多腳／調低＝看到更多頭頂）：<span id="ac-y-v"></span></label><input type="range" id="ac-y" min="-80" max="80" step="1"></div>
+      <div><label>演員角度（左右轉身）：<span id="ac-yaw-v"></span></label><input type="range" id="ac-yaw" min="-90" max="90" step="1"></div>
+      <div><label>鏡頭俯仰：<span id="ac-pitch-v"></span></label><input type="range" id="ac-pitch" min="-30" max="30" step="1"></div>
+      <div><label>嘴型幅度：<span id="ac-mouth-v"></span></label><input type="range" id="ac-mouth" min="40" max="200" step="5"></div>
+      <div style="display:flex;flex-direction:column;justify-content:center;gap:4px"><button class="g" id="ac-reset" type="button">重設構圖</button><span class="hint" style="margin:0;font-size:.75rem">左側預覽圖可用滑鼠拖曳轉身／俯仰、滾輪縮放；設定會自動記住</span></div>
+    </div>
+    <label for="av" style="max-width:280px;margin-bottom:6px">2D 頭像備援（無 3D 模型時使用）<input type="file" id="av" accept="image/*" style="margin-top:2px"></label>
+    <p class="hint" style="margin:0">
+      • <b>14 種 Pose 選單</b>：自然垂放、T-Pose、右手揮手、左手揮手、雙手歡呼、雙手交叉、思考、叉腰、雙手背後、雙手前伸、合十祈禱、害羞、舉手發問、鞠躬。<br>
+      • <b>比例與構圖</b>：針對 1280×720 寬螢幕優化半身比例，左側保留完整字幕與簡報空間。<br>
+      • <b>完整中文語音</b>：長講稿依標點切分成短句逐段合成，再無縫拼接成完整音軌。
+    </p>
+  </div>
+</div>
+
+<div class="bar">
+  <button id="rec-btn" type="button" style="background:#c0392b;color:#fff">● 開始錄製</button>
+  <button id="play-btn" type="button">▶ 播放</button>
+  <label class="row" style="margin:0"><input type="checkbox" id="fs">單獨播放時全螢幕</label>
+  <label class="row" style="margin:0"><input type="checkbox" id="autostop" checked>播放結束後自動停止錄製並下載</label>
+  <label class="row" style="margin:0"><input type="checkbox" id="fsreal">錄製時使用瀏覽器真全螢幕（若錄不到畫面請取消）</label>
+  <a id="dlv" hidden><button class="g" type="button">下載影片</button></a>
+  <span id="prog" class="hint" style="margin:0;font-weight:600;color:var(--ac)"></span>
+</div>
+<canvas id="cv" width="1280" height="720" hidden></canvas>
+<video id="pv" controls playsinline hidden></video>
+</section>
+
+<section>
+<h2>分鏡腳本</h2>
+<div class="stats" id="stats"></div>
+<div class="bar"><button id="add">新增分鏡</button><button class="g" id="md">匯出分鏡 Markdown</button><button class="g" id="ff">產生 FFmpeg 合成指令</button></div>
+<div id="scenes"></div>
+<pre id="out" hidden></pre>
+</section>
+
+</main>
+
+<script>
+const KEY="course-pipeline-v5";
+// 全域偏好：獨立於課程資料，按「重設範本」或匯入 JSON 都不會被清掉；每台裝置（手機／筆電）各自記住
+const PKEY="course-pipeline-prefs-v1";
+let P={};try{P=JSON.parse(localStorage.getItem(PKEY))||{}}catch(e){P={}}
+const ACTOR_DEF={zoom:100,x:0,y:0,yaw:0,pitch:0,mouth:100};
+window.ACTOR=Object.assign({},ACTOR_DEF,P.actor||{});
+function savePrefs(){
+ try{
+  const g=id=>document.getElementById(id);
+  if(window.S){
+   if(S.ai){P.ai=S.ai;P.profiles=P.profiles||{};P.profiles[S.ai.provider]={endpoint:S.ai.endpoint,model:S.ai.model,key:S.ai.key}}
+   P.vrmScale=S.vrmScale;P.presetId=S.presetId;P.defaultPose=S.defaultPose;
+  }
+  if(g("tts-mode")&&g("usep")&&g("fill")&&g("local-voice")){
+   P.opts={tts:g("tts-mode").value,usep:g("usep").checked,fill:g("fill").checked,voice:g("local-voice").value||(P.opts&&P.opts.voice)||"",autostop:g("autostop")?g("autostop").checked:true,fsreal:g("fsreal")?g("fsreal").checked:false};
+  }
+  P.actor=window.ACTOR;
+  localStorage.setItem(PKEY,JSON.stringify(P));
+ }catch(e){}
+}
+window.savePrefs=savePrefs;
+const STATUS={todo:"待處理",script:"講稿完成",media:"素材完成",done:"已合成"};
+
+const DOWN={leftUpperArm:[.1,0,-1.3],rightUpperArm:[.1,0,1.3],leftLowerArm:[0,0,-.15],rightLowerArm:[0,0,.15]};
+const POSES=[
+ {id:"natural",zh:"自然垂放",d:"雙手自然垂在兩側",b:{...DOWN}},
+ {id:"tpose",zh:"T-Pose",d:"標準 T 字姿勢",b:{}},
+ {id:"waveR",zh:"右手揮手",d:"右手舉高打招呼",b:{...DOWN,rightUpperArm:[0,0,-.9],rightLowerArm:[0,0,-.7]}},
+ {id:"waveL",zh:"左手揮手",d:"左手舉高打招呼",b:{...DOWN,leftUpperArm:[0,0,.9],leftLowerArm:[0,0,.7]}},
+ {id:"cheer",zh:"雙手歡呼",d:"雙手向上舉高",b:{leftUpperArm:[0,0,1.35],rightUpperArm:[0,0,-1.35],head:[-.15,0,0]}},
+ {id:"crossed",zh:"雙手交叉",d:"雙臂交叉於胸前",b:{leftUpperArm:[-.7,-1,-1.9],rightUpperArm:[-.6,1,1.9],leftLowerArm:[0,-1.3,-.25],rightLowerArm:[0,1.3,.25]}},
+ {id:"thinking",zh:"思考",d:"右手撐下巴沉思",b:{...DOWN,rightUpperArm:[.6,-.3,.8],rightLowerArm:[0,0,1.8],head:[.1,.15,.1]}},
+ {id:"hips",zh:"叉腰",d:"雙手叉腰",b:{leftUpperArm:[0,0,-.8],rightUpperArm:[0,0,.8],leftLowerArm:[0,0,-1.2],rightLowerArm:[0,0,1.2]}},
+ {id:"handsBack",zh:"雙手背後",d:"雙手交握在背後",b:{leftUpperArm:[0,.6,-1.25],rightUpperArm:[0,-.6,1.25],leftLowerArm:[0,.6,-.15],rightLowerArm:[0,-.6,.15]}},
+ {id:"reach",zh:"雙手前伸",d:"雙臂向前平舉",b:{leftUpperArm:[0,-1.5,0],rightUpperArm:[0,1.5,0]}},
+ {id:"pray",zh:"合十祈禱",d:"雙手於胸前合十",b:{leftUpperArm:[0,-.4,-1.1],rightUpperArm:[0,.4,1.1],leftLowerArm:[0,-1.9,0],rightLowerArm:[0,1.9,0],head:[.1,0,0]}},
+ {id:"shy",zh:"害羞",d:"雙手在身前、微低頭歪頭",b:{leftUpperArm:[0,-.25,-1.25],rightUpperArm:[0,.25,1.25],leftLowerArm:[0,-1,0],rightLowerArm:[0,1,0],head:[.25,0,.12]}},
+ {id:"raiseHand",zh:"舉手發問",d:"右手高舉",b:{...DOWN,rightUpperArm:[0,0,-1.45],rightLowerArm:[0,0,-.1]}},
+ {id:"bow",zh:"鞠躬",d:"身體前傾致意",b:{...DOWN,spine:[.45,0,0],head:[.2,0,0]}}
+];
+window.POSES=POSES;
+const poseLabel=id=>(POSES.find(p=>p.id===id)||POSES[0]).zh;
+window.poseLabel=poseLabel;
+const poseOptions=selected=>POSES.map(p=>`<option value="${p.id}" ${p.id===selected?"selected":""}>${p.zh}（${p.d}）</option>`).join("");
+
+const defaults=()=>({
+ title:"我的 AI 實戰課程",
+ ai:{provider:"puter",endpoint:"",model:"gpt-5-nano",key:""},
+ presetId:"chatvrm-b",
+ defaultPose:"natural",
+ vrmScale:82,
+ scenes:[
+  {title:"課程開場與學習目標",script:"大家好，歡迎來到今天的課程！今天我們將帶你從零開始掌握核心觀念，並透過實際範例一步步完成專屬作品。",voice:"scene1.wav",visual:"現代明亮的數位教室，黑板上顯示課程標題與三個核心學習目標圖示",motion:"waveR",secs:15,status:"todo"},
+  {title:"核心概念解析",script:"在開始實作之前，我們先理解背後的運作邏輯。只要掌握資料輸入、處理流程與結果輸出這三個關鍵步驟，就能輕鬆應對各種變化。",voice:"scene2.wav",visual:"簡潔清晰的流程圖表，三個步驟以發光箭頭連接，搭配重點摘要卡片",motion:"natural",secs:15,status:"todo"}
+ ]
+});
+let S;
+window.S=S;
+const $=id=>document.getElementById(id);
+function load(){
+ try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}
+ if(!S||!S.scenes)S=defaults();
+ delete S.stages; // 已移除的「產線工具清單」舊資料
+ S.ai=Object.assign(defaults().ai,S.ai||{},P.ai||{});
+ if(P.presetId)S.presetId=P.presetId;
+ if(P.defaultPose)S.defaultPose=P.defaultPose;
+ if(P.vrmScale)S.vrmScale=P.vrmScale;
+ if(!S.presetId)S.presetId="chatvrm-b";
+ if(!S.defaultPose||!POSES.some(p=>p.id===S.defaultPose))S.defaultPose="natural";
+ if(!S.vrmScale)S.vrmScale=82;
+ window.S=S;
+}
+function save(){
+ window.S=S;
+ try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){note("瀏覽器禁止自動存檔，請用匯出備份")}
+ savePrefs();
+}
+let t;function note(m){$("msg").textContent=m;clearTimeout(t);t=setTimeout(()=>$("msg").textContent="",3500)}
+window.say=(m,ms)=>{$("msg").textContent=m;clearTimeout(t);t=setTimeout(()=>$("msg").textContent="",ms||5000)};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function render(){
+ $("title").value=S.title;
+ $("vrm-default-pose").innerHTML=poseOptions(S.defaultPose);
+ $("vrm-default-pose").value=S.defaultPose;
+ $("vrm-scale").value=S.vrmScale;
+ $("vrm-scale-val").textContent=S.vrmScale+"%";
+ renderAI();
+ renderScenes();
+}
+function renderScenes(){
+ const total=S.scenes.reduce((a,s)=>a+(+s.secs||0),0),done=S.scenes.filter(s=>s.status==="done").length;
+ $("stats").innerHTML=`<span class="chip">共 ${S.scenes.length} 段</span><span class="chip">預估總長 ${Math.floor(total/60)} 分 ${total%60} 秒</span><span class="chip">已合成 ${done} 段</span>`;
+ $("scenes").innerHTML=S.scenes.map((s,i)=>{
+  const curMotion=POSES.some(p=>p.id===s.motion)?s.motion:"natural";
+  return `<div class="scene" data-s="${s.status}">
+  <div><label>分鏡標題</label><input data-sc="${i}" data-k="title" value="${esc(s.title)}"></div>
+  <div><label>狀態</label><select data-sc="${i}" data-k="status">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===s.status?"selected":""}>${v}</option>`).join("")}</select></div>
+  <div class="w"><label>中文口語講稿（支援長文自動分段朗讀）</label><textarea data-sc="${i}" data-k="script">${esc(s.script)}</textarea></div>
+  <div><label>背景畫面描述</label><textarea data-sc="${i}" data-k="visual">${esc(s.visual)}</textarea></div>
+  <div><label>3D 講師 Pose 選單（14 種）</label><select data-sc="${i}" data-k="motion">${poseOptions(curMotion)}</select></div>
+  <div><label>配音檔名</label><input data-sc="${i}" data-k="voice" value="${esc(s.voice)}"></div>
+  <div><label>預估秒數</label><input type="number" min="0" data-sc="${i}" data-k="secs" value="${esc(s.secs)}"></div>
+  <div class="w bar"><button data-gs="${i}">AI 寫中文講稿</button><button data-gv="${i}">AI 寫畫面描述</button><button class="g" data-up="${i}">上移</button><button class="g" data-dn="${i}">下移</button><button class="d" data-del="${i}">刪除</button></div></div>`;
+ }).join("")||'<p class="hint">還沒有分鏡，按「新增分鏡」開始。</p>';
+}
+
+document.addEventListener("change",e=>{
+ const d=e.target.dataset,k=d.k;
+ if(e.target.id==="vrm-default-pose"){
+  S.defaultPose=e.target.value||"natural";
+  save();
+  if(window.vrm3d)window.vrm3d.setPose(S.defaultPose);
+  note("已切換 3D 講師預設 Pose 為「"+poseLabel(S.defaultPose)+"」");
+  return;
+ }
+ if(d.sc!==undefined){
+  S.scenes[d.sc][k]=e.target.value;
+  save();
+  if(k==="status"){e.target.closest(".scene").dataset.s=S.scenes[d.sc].status;updStats()}
+  if(k==="motion"&&window.vrm3d)window.vrm3d.setPose(e.target.value||S.defaultPose||"natural");
+ }
+});
+
+document.addEventListener("input",e=>{
+ const d=e.target.dataset,k=d.k;
+ if(e.target.id==="title"){S.title=e.target.value;save();return}
+ if(e.target.id==="vrm-scale"){S.vrmScale=+e.target.value;$("vrm-scale-val").textContent=S.vrmScale+"%";save();return}
+ if(d.sc!==undefined){S.scenes[d.sc][k]=e.target.value;save();if(k==="secs"){e.target.closest(".scene").dataset.s=S.scenes[d.sc].status;updStats()}}
+});
+
+function updStats(){const total=S.scenes.reduce((a,s)=>a+(+s.secs||0),0),done=S.scenes.filter(s=>s.status==="done").length;
+ $("stats").innerHTML=`<span class="chip">共 ${S.scenes.length} 段</span><span class="chip">預估總長 ${Math.floor(total/60)} 分 ${total%60} 秒</span><span class="chip">已合成 ${done} 段</span>`}
+
+document.addEventListener("click",e=>{
+ const d=e.target.dataset;
+ if(d.del!==undefined&&confirm("確定刪除此分鏡？")){S.scenes.splice(d.del,1)}
+ else if(d.up!==undefined&&+d.up>0){const i=+d.up;[S.scenes[i-1],S.scenes[i]]=[S.scenes[i],S.scenes[i-1]]}
+ else if(d.dn!==undefined&&+d.dn<S.scenes.length-1){const i=+d.dn;[S.scenes[i+1],S.scenes[i]]=[S.scenes[i],S.scenes[i+1]]}
+ else return;
+ save();renderScenes();
+});
+
+$("add").onclick=()=>{S.scenes.push({title:"分鏡 "+(S.scenes.length+1),script:"",voice:`scene${S.scenes.length+1}.wav`,visual:"",motion:S.defaultPose||"natural",secs:20,status:"todo"});save();renderScenes()};
+function dl(name,text,type){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+const fname=()=>(S.title||"course").replace(/[\\/:*?"<>|\s]+/g,"_");
+$("exp").onclick=()=>{dl(fname()+".json",JSON.stringify({...S,ai:{...S.ai,key:""}},null,2),"application/json");note("已匯出 JSON")};
+$("imp").onclick=()=>$("file").click();
+$("file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+ r.onload=()=>{try{const j=JSON.parse(r.result);if(!Array.isArray(j.scenes))throw 0;delete j.stages;const keep=S.ai;S=j;S.ai=keep;if(!S.defaultPose)S.defaultPose="natural";save();render();if(window.vrm3d)window.vrm3d.setPose(S.defaultPose);note("匯入成功")}catch(x){note("匯入失敗：檔案格式不符")}};
+ r.readAsText(f);e.target.value=""};
+$("rst").onclick=()=>{if(confirm("將清除目前內容並還原範本，確定嗎？（AI 設定、語音選項與演員構圖會保留）")){const keepAi=S.ai;S=defaults();S.ai=keepAi;if(P.presetId)S.presetId=P.presetId;if(P.vrmScale)S.vrmScale=P.vrmScale;save();render();if(window.vrm3d)window.vrm3d.setPose(S.defaultPose)}};
+function show(t){const o=$("out");o.hidden=false;o.textContent=t}
+$("md").onclick=()=>{const m=`# ${S.title}\n\n`+S.scenes.map((s,i)=>`## ${i+1}. ${s.title}（${s.secs} 秒，${STATUS[s.status]}）\n- 講稿：${s.script}\n- 畫面：${s.visual}\n- 講師 Pose：${poseLabel(s.motion)}\n- 配音：${s.voice}\n`).join("\n");dl(fname()+".md",m,"text/markdown");show(m)};
+$("ff").onclick=()=>{const l=S.scenes.map((s,i)=>`# ${s.title}\nffmpeg -y -loop 1 -i scene${i+1}.png -i ${s.voice||"scene"+(i+1)+".wav"} -c:v libx264 -tune stillimage -c:a aac -pix_fmt yuv420p -shortest scene${i+1}.mp4`);
+ l.push("# 合併全部分鏡（需先建立 list.txt，每行：file 'sceneN.mp4'）","ffmpeg -y -f concat -safe 0 -i list.txt -c copy output.mp4");show(l.join("\n"));note("指令為範本，請依實際素材檔名調整")};
+
+/* --- AI 連線設定 --- */
+const PROV={puter:{ep:"",m:"gpt-5-nano"},ollama:{ep:"http://localhost:11434",m:""},openai:{ep:"http://localhost:1234/v1",m:""}};
+const SYS="你是專業的繁體中文課程影片編劇。請一律使用流暢自然的繁體中文輸出所需內容，不加寒暄與額外說明。";
+const SYSJ=SYS+"只輸出合法 JSON，不使用 Markdown 圍欄。";
+function renderAI(){const a=S.ai;$("prov").value=a.provider;$("ep").value=a.endpoint;$("mdl").value=a.model;$("key").value=a.key;$("epw").hidden=$("keyw").hidden=a.provider==="puter"}
+$("prov").onchange=e=>{
+ const p=e.target.value;
+ P.profiles=P.profiles||{};
+ P.profiles[S.ai.provider]={endpoint:S.ai.endpoint,model:S.ai.model,key:S.ai.key};
+ const pr=P.profiles[p]||{};
+ S.ai.provider=p;
+ S.ai.endpoint=pr.endpoint!==undefined?pr.endpoint:PROV[p].ep;
+ S.ai.model=pr.model!==undefined?pr.model:PROV[p].m;
+ S.ai.key=pr.key||"";
+ if(p!=="puter"){
+  $("tts-mode").value="webspeech";$("usep").checked=false;
+  note("已切換為本機／自訂 AI：自動改用本機語音並關閉 Puter 插圖，避免跳出 Puter 視窗");
+ }
+ save();renderAI();
+};
+[["ep","endpoint"],["mdl","model"],["key","key"]].forEach(([id,k])=>$(id).oninput=e=>{S.ai[k]=e.target.value;save()});
+function fail(e){say(e instanceof TypeError?"連線失敗：請確認服務已啟動，並已允許網頁跨來源存取（CORS）":"AI 錯誤："+(e.message||e),8000)}
+function loadPuter(){return new Promise((ok,no)=>{if(window.puter)return ok();const s=document.createElement("script");s.src="https://js.puter.com/v2/";s.onload=ok;s.onerror=()=>no(new Error("無法載入 Puter，請確認網路"));document.head.appendChild(s)})}
+const txt=r=>{if(typeof r==="string")return r;const c=r?.message?.content??r?.text;return Array.isArray(c)?c.map(x=>x.text||"").join(""):String(c??"")};
+async function callAI(sys,user){
+ const a=S.ai,msgs=[{role:"system",content:sys},{role:"user",content:user}];
+ if(!a.model.trim()&&a.provider!=="puter")throw new Error("請先填寫模型名稱");
+ if(a.provider==="puter"){await loadPuter();return txt(await puter.ai.chat(msgs,a.model?{model:a.model}:{}))}
+ const b=a.endpoint.replace(/\/+$/,""),h={"Content-Type":"application/json"};
+ if(a.key)h.Authorization="Bearer "+a.key;
+ const ol=a.provider==="ollama";
+ const r=await fetch(ol?b+"/api/chat":b+"/chat/completions",{method:"POST",headers:h,body:JSON.stringify({model:a.model,messages:msgs,stream:false})});
+ if(!r.ok)throw new Error("服務回應 "+r.status+"："+(await r.text()).slice(0,120));
+ const j=await r.json();return ol?j.message.content:j.choices[0].message.content;
+}
+const pj=x=>{const m=x.match(/[\[{][\s\S]*[\]}]/);if(!m)throw new Error("模型未回傳 JSON，請換較大的模型再試");return JSON.parse(m[0])};
+async function run(btn,fn){const o=btn.textContent;btn.disabled=true;btn.textContent="AI 處理中…";try{await fn()}catch(e){fail(e)}finally{btn.disabled=false;btn.textContent=o}}
+$("det").onclick=e=>run(e.target,async()=>{const a=S.ai;let list=[];
+ if(a.provider==="puter"){await loadPuter();if(!puter.ai.listModels)throw new Error("Puter 請手動輸入模型名稱");list=(await puter.ai.listModels()).map(x=>x.id||x)}
+ else{const b=a.endpoint.replace(/\/+$/,""),ol=a.provider==="ollama",h=a.key?{Authorization:"Bearer "+a.key}:{};
+  const r=await fetch(ol?b+"/api/tags":b+"/models",{headers:h});if(!r.ok)throw new Error("服務回應 "+r.status);const j=await r.json();
+  list=ol?j.models.map(m=>m.name):j.data.map(m=>m.id)}
+ $("mlist").innerHTML=list.map(n=>`<option value="${esc(n)}">`).join("");say(`找到 ${list.length} 個模型，點模型欄位即可選擇`)});
+$("test").onclick=e=>run(e.target,async()=>{const r=await callAI(SYS,"請只回覆「連線成功」四個字");say("測試結果："+r.trim().slice(0,30))});
+$("outline").onclick=e=>run(e.target,async()=>{const tp=$("topic").value.trim()||S.title,n=Math.min(20,Math.max(1,+$("cnt").value||4));
+ const validIds=POSES.map(p=>p.id).join(", ");
+ const arr=pj(await callAI(SYSJ,`課程主題：${tp}\n請設計 ${n} 段繁體中文教學分鏡，輸出 JSON 陣列，每項含 title、script（繁體中文口語講稿，每段約 80~150 字）、visual（畫面描述）、motion（必須從以下 Pose ID 擇一：${validIds}）、secs（秒數整數）。`));
+ if(!Array.isArray(arr))throw new Error("模型回傳格式不符");
+ arr.forEach(o=>{
+  const mId=POSES.some(p=>p.id===o.motion)?o.motion:(S.defaultPose||"natural");
+  S.scenes.push({title:o.title||"未命名",script:o.script||"",voice:`scene${S.scenes.length+1}.wav`,visual:o.visual||"",motion:mId,secs:+o.secs||20,status:"todo"});
+ });
+ save();renderScenes();say(`已新增 ${arr.length} 段繁體中文分鏡`)});
+
+document.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const d=b.dataset;
+ if(d.gs!==undefined)run(b,async()=>{const s=S.scenes[d.gs],n=Math.max(50,Math.round((+s.secs||20)/60*220));
+  const r=await callAI(SYS,`課程：${S.title}\n分鏡標題：${s.title}\n目前講稿：${s.script||"（無）"}\n請用繁體中文寫出約 ${n} 字的自然口語教學講稿，不要包含動作標籤或表情符號，只輸出講稿本文。`);s.script=r.trim();save();renderScenes()});
+ if(d.gv!==undefined)run(b,async()=>{const s=S.scenes[d.gv];
+  const r=await callAI(SYS,`課程：${S.title}\n分鏡標題：${s.title}\n講稿：${s.script}\n請用繁體中文寫出約 40~60 字的教學畫面描述，只輸出描述本文。`);
+  if(r.trim())s.visual=r.trim();save();renderScenes()});
+});
+
+/* --- 2D 頭像與本機語音初始化 --- */
+let avImg=null,localVoices=[];
+$("av").onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{avImg=im;say("已載入 2D 講師頭像",3000)};im.src=URL.createObjectURL(f)};
+function initLocalVoices(){
+ if(!window.speechSynthesis)return;
+ const fill=()=>{
+  localVoices=speechSynthesis.getVoices();
+  const sel=$("local-voice");
+  const prevVoice=sel.value||(P.opts&&P.opts.voice)||"";
+  sel.innerHTML="";
+  const sorted=[...localVoices].sort((a,b)=>{
+   const score=v=>/zh-TW|cmn-Hant/i.test(v.lang)?3:/^zh/i.test(v.lang)?2:0;
+   return score(b)-score(a);
+  });
+  sorted.forEach(v=>{
+   const o=document.createElement("option");
+   o.value=v.name;
+   o.textContent=`${v.name} (${v.lang})`;
+   sel.appendChild(o);
+  });
+  if(prevVoice&&[...sel.options].some(o=>o.value===prevVoice))sel.value=prevVoice;
+ };
+ fill();
+ speechSynthesis.onvoiceschanged=fill;
+}
+initLocalVoices();
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+function cleanSpeechText(t){
+ return String(t||"")
+  .replace(/[\[【][^\]】\n]{1,20}[\]】]/g,"")
+  .replace(/[*＊#_`]+/g,"")
+  .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu,"")
+  .replace(/\s+/g," ")
+  .trim();
+}
+
+function splitSpeech(t,max=75){
+ const clean=cleanSpeechText(t);
+ if(!clean)return[];
+ const parts=clean.match(/[^。！？!?；;\n，,、.]+[。！？!?；;.]*/g)||[clean];
+ const merged=[];let buf="";
+ for(const p of parts){
+  if(buf&&(buf+p).length>max){merged.push(buf.trim());buf=p}
+  else buf+=p;
+ }
+ if(buf.trim())merged.push(buf.trim());
+ const out=[];
+ merged.forEach(m=>{
+  for(let i=0;i<m.length;i+=max)out.push(m.slice(i,i+max).trim());
+ });
+ return out.filter(Boolean);
+}
+
+function concatAudioBuffers(ac,buffers){
+ const valid=buffers.filter(Boolean);
+ if(!valid.length)return null;
+ const rate=valid[0].sampleRate;
+ const ch=Math.max(...valid.map(b=>b.numberOfChannels));
+ const gapSamples=Math.round(rate*0.18);
+ const totalLen=valid.reduce((sum,b)=>sum+b.length,0)+gapSamples*(valid.length-1);
+ const out=ac.createBuffer(ch,totalLen,rate);
+ let offset=0;
+ valid.forEach((b,idx)=>{
+  for(let c=0;c<ch;c++){
+   const dst=out.getChannelData(c);
+   const src=b.getChannelData(Math.min(c,b.numberOfChannels-1));
+   dst.set(src,offset);
+  }
+  offset+=b.length+(idx<valid.length-1?gapSamples:0);
+ });
+ return out;
+}
+
+async function fetchPuterTTSChunk(ac,chunk){
+ const isZh=/[\u4e00-\u9fff]/.test(chunk);
+ const optsList=isZh?[{language:"cmn-CN"},{language:"zh-CN"},{}]:[{}];
+ for(const opt of optsList){
+  try{
+   const audioEl=await puter.ai.txt2speech(chunk,opt);
+   const arrBuf=await (await fetch(audioEl.src)).arrayBuffer();
+   return await ac.decodeAudioData(arrBuf);
+  }catch(e){
+   console.warn("Puter TTS 單段嘗試失敗:",opt,e);
+  }
+ }
+ return null;
+}
+
+async function mkVoice(ac,rawText,onStep){
+ const chunks=splitSpeech(rawText,70);
+ if(!chunks.length)return null;
+ try{
+  await loadPuter();
+  const bufs=[];
+  for(let i=0;i<chunks.length;i++){
+   if(onStep)onStep(`合成中文語音 (${i+1}/${chunks.length})`);
+   const b=await fetchPuterTTSChunk(ac,chunks[i]);
+   if(b)bufs.push(b);
+  }
+  if(bufs.length>0)return concatAudioBuffers(ac,bufs);
+ }catch(e){
+  console.warn("Puter TTS 無法使用，改用本機備援:",e);
+ }
+ return null;
+}
+
+function speakLocalSequential(rawText){
+ return new Promise(resolve=>{
+  const synth=window.speechSynthesis;
+  if(!synth)return resolve();
+  const chunks=splitSpeech(rawText,36);
+  if(!chunks.length)return resolve();
+  const selName=$("local-voice").value;
+  const voice=localVoices.find(v=>v.name===selName)||localVoices.find(v=>/^zh/i.test(v.lang));
+  let i=0,done=false;
+  const keep=setInterval(()=>{
+   try{if(synth.speaking&&!synth.paused){synth.pause();synth.resume()}}catch(e){}
+  },4500);
+  const finish=()=>{if(!done){done=true;clearInterval(keep);LIP.speaking=false;resolve()}};
+  const next=()=>{
+   if(done||PB.abort||i>=chunks.length)return finish();
+   const u=new SpeechSynthesisUtterance(chunks[i]);
+   if(voice){u.voice=voice;u.lang=voice.lang}else{u.lang="zh-TW"}
+   u.rate=1.0;u.pitch=1.05;
+   window._curUtter=u;
+   let fired=false;
+   const adv=()=>{if(fired)return;fired=true;LIP.speaking=false;i++;next()};
+   u.onstart=()=>{if(!fired)LIP.speaking=true}; // 只有語音真的開始發聲才張嘴
+   u.onend=adv;
+   u.onerror=()=>adv();
+   setTimeout(adv,Math.max(4000,chunks[i].length*450));
+   synth.speak(u);
+  };
+  synth.cancel();
+  setTimeout(next,60);
+ });
+}
+
+async function mkImage(q){
+ try{
+  await loadPuter();
+  const prompt=`Educational presentation background illustration, clean modern style, high contrast, no messy text: ${q}`;
+  const im=await puter.ai.txt2img(prompt);
+  if(im.decode)await im.decode();
+  return im;
+ }catch(e){return null}
+}
+
+function wrapT(ctx,text,w){
+ const out=[];let l="";
+ for(const c of text){
+  if(ctx.measureText(l+c).width>w){out.push(l);l=c}
+  else l+=c;
+ }
+ if(l)out.push(l);
+ return out;
+}
+
+function frame(ctx,img,s,cap,amp,el,vTrack){
+ const W=1280,H=720;
+ if(img){
+  const k=Math.max(W/img.width,H/img.height),w=img.width*k,h=img.height*k;
+  ctx.drawImage(img,(W-w)/2,(H-h)/2,w,h);
+  const ov=ctx.createLinearGradient(0,0,W,0);
+  ov.addColorStop(0,"rgba(12,20,18,0.52)");
+  ov.addColorStop(0.68,"rgba(12,20,18,0.25)");
+  ov.addColorStop(1,"rgba(12,20,18,0.10)");
+  ctx.fillStyle=ov;ctx.fillRect(0,0,W,H);
+ }else{
+  const g=ctx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,"#163b33");g.addColorStop(0.55,"#1f5e50");g.addColorStop(1,"#0f2420");
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="rgba(255,255,255,0.08)";
+  ctx.beginPath();ctx.roundRect(48,54,820,420,18);ctx.fill();
+  ctx.strokeStyle="rgba(255,255,255,0.18)";ctx.lineWidth=2;ctx.stroke();
+
+  ctx.fillStyle="#7ee2c7";ctx.textAlign="left";ctx.font="600 22px sans-serif";
+  ctx.fillText(S.title||"線上教學課程",78,104);
+
+  ctx.fillStyle="#ffffff";ctx.font="bold 44px sans-serif";
+  const titleLines=wrapT(ctx,s.title,760).slice(0,2);
+  titleLines.forEach((line,idx)=>ctx.fillText(line,78,164+idx*54));
+
+  if(s.visual){
+   ctx.fillStyle="rgba(230,242,238,0.88)";ctx.font="26px sans-serif";
+   const visLines=wrapT(ctx,s.visual,760).slice(0,4);
+   visLines.forEach((line,idx)=>ctx.fillText("• "+line,78,295+idx*40));
+  }
+ }
+
+ const scale=(S.vrmScale||82)/100;
+ const charH=Math.round(560*scale);
+ const charW=Math.round(charH*(320/480));
+ const charX=W-charW-24;
+ const charY=H-charH;
+ const scenePose=POSES.some(p=>p.id===s.motion)?s.motion:(S.defaultPose||"natural");
+
+ if(window.vrm3d&&vrm3d.has()){
+  vrm3d.draw(ctx,charX,charY,charW,charH,amp,el,scenePose);
+ }else if(avImg){
+  const h=Math.round(340*scale),w=avImg.width/avImg.height*h;
+  ctx.drawImage(avImg,W-w-44,H-h-24-amp*14,w,h);
+ }
+
+ if(cap){
+  const boxW=W-charW-76;
+  ctx.font="30px sans-serif";
+  ctx.textAlign="left";
+  const ls=wrapT(ctx,cap,boxW-48).slice(0,3);
+  const bh=ls.length*42+28;
+  const bx=48,by=H-bh-32;
+  ctx.fillStyle="rgba(10,16,15,0.78)";
+  ctx.beginPath();ctx.roundRect(bx,by,boxW,bh,14);ctx.fill();
+  ctx.strokeStyle="rgba(95,194,166,0.45)";ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle="#ffffff";
+  ls.forEach((l,i)=>ctx.fillText(l,bx+24,by+40+i*42));
+ }
+
+ if(vTrack&&typeof vTrack.requestFrame==="function")vTrack.requestFrame();
+}
+
+async function playScene(ctx,ac,dest,an,s,a,vTrack){
+ const clean=cleanSpeechText(s.script||"");
+ const sent=clean.match(/[^。！？!?；;\n]+[。！？!?；;]?/g)||[clean];
+ const useLocalFallback=!a.buf&&clean.length>0;
+ const minSecs=Math.max(5,Number(s.secs)||10);
+ const estDur=a.buf?(a.buf.duration+0.6):Math.max(minSecs,clean.length/3.8+1.5);
+ let localDone=false;
+
+ if(a.buf){
+  const src=ac.createBufferSource();
+  src.buffer=a.buf;
+  src.connect(dest);
+  src.connect(an);
+  PB.src=src;
+  src.start();
+ }else if(useLocalFallback){
+  speakLocalSequential(clean).then(()=>{localDone=true});
+ }
+
+ const d=new Uint8Array(an.fftSize),t0=performance.now();
+ await new Promise(res=>{
+  (function loop(){
+   const el=(performance.now()-t0)/1000;
+   const done=a.buf?(el>=estDur):(useLocalFallback?(localDone&&el>=minSecs):(el>=estDur));
+   if(PB.abort){try{PB.src&&PB.src.stop()}catch(e){}try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}return res();}
+   if(done)return res();
+
+   let amp=0;
+   if(a.buf){
+    an.getByteTimeDomainData(d);
+    let sq=0;for(const v of d){const x=(v-128)/128;sq+=x*x}
+    amp=Math.min(1,Math.sqrt(sq/d.length)*4); // RMS：反映實際音量，停頓時嘴巴會閉上
+   }else if(useLocalFallback){
+    amp=LIP.speaking?0.5:0; // 本機語音：只在真的說話時張嘴
+   }
+
+   const progress=Math.min(0.999,el/estDur);
+   const curSent=(sent[Math.min(sent.length-1,Math.floor(progress*sent.length))]||"").trim();
+   frame(ctx,a.img,s,curSent,amp,el,vTrack);
+   requestAnimationFrame(loop);
+  })();
+ });
+}
+
+// =====================================================================
+// 錄製（移植自 index.html：getDisplayMedia 擷取畫面＋音訊，MediaRecorder 輸出 MP4，不支援時退回 WebM）
+// =====================================================================
+const LIP={speaking:false};
+const PB={abort:false,playing:false,ac:null,an:null,src:null,assets:null,sig:""};
+const REC={recorder:null,chunks:[],stream:null,t0:0,timer:null,type:"video/webm",ext:"webm"};
+const REC_MIMES=["video/mp4;codecs=h264","video/webm;codecs=h264","video/webm;codecs=vp9,opus","video/webm"];
+const stopTracks=st=>{if(st)st.getTracks().forEach(t=>t.stop())};
+const errText=e=>(e&&(e.message||e.name))||String(e);
+
+function paintRec(on,label){
+ const b=$("rec-btn");
+ b.textContent=on?"■ 停止錄製並下載 "+(label||"00:00"):"● 開始錄製";
+ b.style.background=on?"#7f1d1d":"#c0392b";
+ b.title=on?"停止錄影並下載":"錄製畫面與聲音";
+}
+
+async function startRecording(){
+ if(REC.recorder)return;
+ let stream;
+ const screenMode=confirm(
+  "請選擇錄影模式：\n\n"+
+  "【確定】整個螢幕＋系統音訊\n　可錄到本機系統語音。Windows 的 Chrome / Edge：在分享視窗選「整個螢幕」，並勾選「分享系統音訊」。\n\n"+
+  "【取消】僅此分頁\n　只錄到分頁內的聲音（Puter 雲端語音適用；本機系統語音可能錄不到）。請在分享視窗選「分頁」，並勾選「分享分頁音訊」。"
+ );
+ try{
+  stream=await navigator.mediaDevices.getDisplayMedia(screenMode?{
+   video:{width:1920,height:1080,frameRate:30,displaySurface:"monitor"},
+   audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},
+   systemAudio:"include",monitorTypeSurfaces:"include"
+  }:{
+   video:{width:1920,height:1080,frameRate:30,displaySurface:"browser"},
+   audio:true
+  });
+ }catch(err){
+  console.error("啟動錄製失敗:",err);
+  if(err&&err.name!=="NotAllowedError")alert("無法開始錄影："+errText(err));
+  return;
+ }
+ if(!stream.getAudioTracks().length){
+  if(!confirm("沒有偵測到音訊（分享視窗中未勾選「分享分頁音訊」或「分享系統音訊」，或此系統不支援）。\n\n按「確定」＝只錄影像（沒有聲音）\n按「取消」＝放棄，請重新開始並勾選音訊選項")){
+   stopTracks(stream);return;
+  }
+ }
+ const mime=REC_MIMES.find(m=>MediaRecorder.isTypeSupported(m))||"";
+ try{
+  REC.recorder=mime?new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:6000000}):new MediaRecorder(stream);
+ }catch(e){stopTracks(stream);return alert("此瀏覽器無法建立錄影器："+errText(e))}
+ REC.type=REC.recorder.mimeType||mime||"video/webm";
+ REC.ext=/mp4/i.test(REC.type)?"mp4":"webm";
+ REC.stream=stream;REC.chunks=[];REC.bytes=0;
+
+ REC.recorder.ondataavailable=e=>{if(e.data&&e.data.size>0){REC.chunks.push(e.data);REC.bytes+=e.data.size}};
+ REC.recorder.onstop=()=>{
+  const blob=new Blob(REC.chunks,{type:REC.type}),ext=REC.ext;
+  stopTracks(REC.stream);clearInterval(REC.timer);
+  REC.recorder=null;REC.stream=null;REC.chunks=[];
+  paintRec(false);
+  if(!blob.size){say("沒有錄到任何資料，請重新錄製",6000);return}
+  const url=URL.createObjectURL(blob);
+  const pv=$("pv");
+  pv.onerror=()=>say("預覽器無法播放此格式，請直接下載後用 VLC 或系統播放器開啟",6000);
+  pv.src=url;pv.hidden=false;
+  if(ext==="webm"){ // MediaRecorder 的 WebM 沒有時長資訊，預覽時補算以便拖曳
+   pv.addEventListener("loadedmetadata",function fix(){
+    if(pv.duration===Infinity||isNaN(pv.duration)){
+     pv.removeEventListener("loadedmetadata",fix);
+     pv.currentTime=1e101;
+     pv.addEventListener("timeupdate",function back(){pv.removeEventListener("timeupdate",back);pv.currentTime=0});
+    }
+   });
+  }
+  const fn=`${fname()}_${Date.now()}.${ext}`;
+  const a=$("dlv");a.href=url;a.download=fn;a.hidden=false;
+  a.querySelector("button").textContent="下載 "+ext.toUpperCase()+" 影片";
+  const dl=document.createElement("a");dl.href=url;dl.download=fn;
+  document.body.appendChild(dl);dl.click();dl.remove();
+  const secs=Math.max(1,(Date.now()-REC.t0)/1000),tiny=blob.size/secs<40000;
+  $("prog").textContent=`錄製完成（${(blob.size/1048576).toFixed(2)} MB，${ext.toUpperCase()}），已自動下載，可在下方預覽`+(tiny?"　⚠ 檔案偏小，可能沒錄到畫面":"");
+  if(tiny)alert("錄到的資料量異常偏小，影片可能是空的或只有聲音。\n\n請檢查：\n1. 分享視窗選的是正確的分頁／螢幕\n2. 取消勾選「錄製時使用瀏覽器真全螢幕」後重試\n3. 錄製期間不要切換到其他分頁或最小化視窗");
+ };
+ REC.recorder.onerror=e=>{console.error("MediaRecorder error:",e);stopRecording()};
+ stream.getVideoTracks()[0].addEventListener("ended",stopRecording);
+
+ const beginRec=()=>{
+  if(!REC.recorder||REC.recorder.state!=="inactive")return;
+  REC.recorder.start(1000);
+  REC.t0=Date.now();paintRec(true);
+  REC.timer=setInterval(()=>{
+   const sec=Math.floor((Date.now()-REC.t0)/1000);
+   paintRec(true,`${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")} · ${(REC.bytes/1048576).toFixed(1)}MB`);
+  },500);
+  console.log("錄製已開始...",REC.type);
+ };
+ paintRec(true,"準備中");
+ if(PB.playing){beginRec();$("prog").textContent="錄製中…"}
+ else startPlay({stage:$("fsreal").checked?"real":"overlay",onStage:beginRec}); // 分享設定完成 → 自動全螢幕播放，素材備妥後才開始錄
+}
+
+function stopRecording(){
+ const r=REC.recorder;if(!r)return;
+ if(r.state==="inactive"){ // 尚未開始錄（準備中）：直接取消
+  stopTracks(REC.stream);clearInterval(REC.timer);
+  REC.recorder=null;REC.stream=null;REC.chunks=[];
+  paintRec(false);PB.abort=true;return;
+ }
+ try{r.requestData()}catch(e){}
+ r.stop();
+}
+
+$("rec-btn").onclick=()=>{
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia||typeof MediaRecorder==="undefined"){
+  return alert("此瀏覽器不支援螢幕錄影（需要 getDisplayMedia 與 MediaRecorder）。建議使用桌面版 Chrome 或 Edge。");
+ }
+ if(REC.recorder)return stopRecording();
+ ensureAudio(); // 在點擊手勢內先啟動音訊，之後自動播放才有聲音
+ startRecording();
+};
+
+// =====================================================================
+// 播放：補齊講稿／插圖／語音後，在畫面上實際播放（聲音輸出到喇叭，錄製才收得到）
+// =====================================================================
+// 在使用者手勢內先建立並啟動 AudioContext，避免自動播放時被瀏覽器靜音
+function ensureAudio(){
+ if(!PB.ac||PB.ac.state==="closed"){
+  PB.ac=new (window.AudioContext||window.webkitAudioContext)();
+  PB.an=PB.ac.createAnalyser();PB.an.fftSize=1024;
+ }
+ if(PB.ac.state==="suspended")PB.ac.resume().catch(()=>{});
+}
+// 進入舞台全螢幕：優先使用瀏覽器全螢幕；若被拒絕（沒有使用者手勢），改用滿版覆蓋，畫面效果相同
+function enterStage(cv,mode){
+ const fb=()=>cv.classList.add("stage-fs");
+ if(mode==="overlay")fb();
+ else if(mode==="real"){if(cv.requestFullscreen){try{cv.requestFullscreen().catch(fb)}catch(e){fb()}}else fb()}
+}
+// 真全螢幕切換需要時間且會改變擷取畫面尺寸：等它穩定後才開始錄，避免錄到尺寸跳動而損毀
+function settleStage(cv,mode){
+ return new Promise(r=>{
+  if(mode!=="real")return r();
+  let d=false;
+  const f=()=>{if(d)return;d=true;document.removeEventListener("fullscreenchange",f);setTimeout(r,900)};
+  if(document.fullscreenElement===cv)f();
+  else{document.addEventListener("fullscreenchange",f);setTimeout(f,1500)}
+ });
+}
+function leaveStage(cv){
+ cv.classList.remove("stage-fs");
+ if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+}
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&PB.playing)PB.abort=true});
+document.addEventListener("fullscreenchange",()=>{
+ if(document.fullscreenElement&&document.fullscreenElement.id==="cv")PB.fsStarted=true;
+ else if(PB.fsStarted&&PB.playing){PB.abort=true} // 使用者按 Esc 離開全螢幕＝中止播放
+ if(!document.fullscreenElement)PB.fsStarted=false;
+});
+
+async function startPlay(opt){
+ opt=opt||{};
+ const btn=$("play-btn");
+ if(PB.playing){PB.abort=true;return}
+ const n=S.scenes.length;
+ if(!n)return say("請先建立分鏡");
+ const cv=$("cv"),ctx=cv.getContext("2d"),pg=$("prog");
+ PB.playing=true;PB.abort=false;btn.textContent="■ 停止播放";
+ if(window.vrm3d)vrm3d.busy=true;
+ cv.hidden=false;
+ // 需要使用者手勢的動作，必須在任何 await 之前執行
+ const stageMode=opt.stage||($("fs").checked?"real":"none");
+ enterStage(cv,stageMode);
+ ensureAudio();
+ // 準備素材期間在畫面上顯示進度（錄影尚未開始）
+ const prog=t=>{pg.textContent=t;if(!PB.started){ctx.fillStyle="#0f2420";ctx.fillRect(0,0,cv.width,cv.height);ctx.fillStyle="#fff";ctx.font="bold 40px sans-serif";ctx.textAlign="center";ctx.fillText(t,cv.width/2,cv.height/2);ctx.textAlign="left"}};
+ PB.started=false;
+ prog("準備素材中…");
+ try{
+  if(PB.ac.state==="suspended")await PB.ac.resume();
+  if(opt.onStage){await settleStage(cv,stageMode);opt.onStage()} // 舞台就緒後立刻開始錄影（與可正常錄製的版本相同的時序）
+  if(S.ai.provider!=="puter"&&($("usep").checked||$("tts-mode").value==="puter")&&!PB.puterOk){
+   if(confirm("目前使用本機／自訂 AI，但仍勾選了 Puter 雲端功能（插圖或雲端語音）。\n這些功能會連到 Puter 並跳出登入／警告視窗。\n\n【確定】改用本機語音並關閉雲端插圖（不再跳出視窗）\n【取消】仍要使用 Puter 雲端功能")){
+    $("tts-mode").value="webspeech";$("usep").checked=false;savePrefs();
+   }else PB.puterOk=true;
+  }
+  const ac=PB.ac,fill=$("fill").checked,usep=$("usep").checked,ttsMode=$("tts-mode").value;
+
+  // 1. 補齊空白講稿
+  for(let i=0;i<n&&!PB.abort;i++){
+   const sc=S.scenes[i];
+   if(fill&&!sc.script.trim()){
+    prog(`AI 補齊講稿 ${i+1}/${n}…`);
+    sc.script=(await callAI(SYS,`課程：${S.title}\n分鏡標題：${sc.title}\n請用繁體中文寫出約 100 字的口語教學講稿，只輸出講稿本文。`)).trim();
+    save();
+   }
+  }
+  // 2. 準備插圖與語音（內容沒變時沿用上次的素材）
+  const sig=JSON.stringify([S.scenes.map(x=>[x.title,x.script,x.visual]),usep,ttsMode]);
+  if(!PB.assets||PB.sig!==sig){
+   const assets=[];
+   for(let i=0;i<n&&!PB.abort;i++){
+    const sc=S.scenes[i];
+    prog(`準備素材 ${i+1}/${n}…`);
+    let img=null,buf=null;
+    if(usep)img=await mkImage(sc.visual||sc.title);
+    if(sc.script.trim()&&ttsMode==="puter"){
+     buf=await mkVoice(ac,sc.script,step=>prog(`分鏡 ${i+1}/${n}：${step}`));
+    }
+    assets.push({img,buf});
+   }
+   if(!PB.abort){PB.assets=assets;PB.sig=sig}
+  }
+  renderScenes();
+
+  // 3. 逐段播放
+  if(!PB.abort){
+   const assets=PB.assets;
+   PB.started=true;
+   frame(ctx,assets[0].img,S.scenes[0],"",0,0,null);
+   await sleep(500);
+   for(let i=0;i<n&&!PB.abort;i++){
+    pg.textContent=`正在播放第 ${i+1}/${n} 段…`;
+    await playScene(ctx,ac,ac.destination,PB.an,S.scenes[i],assets[i],null);
+    if(!PB.abort)S.scenes[i].status="done";
+   }
+   save();renderScenes();
+   if(!PB.abort)await sleep(800); // 片尾留白，避免尾音被截掉
+  }
+  const missing=PB.assets?PB.assets.filter((x,idx)=>S.scenes[idx].script.trim()&&!x.buf).length:0;
+  const recOn=REC.recorder&&REC.recorder.state==="recording",auto=recOn&&$("autostop").checked;
+  pg.textContent=PB.abort?"已停止播放":
+   (recOn?(auto?"播放完成，正在結束錄製…":"播放完成，請按「停止錄製並下載」儲存影片"):"播放完成")+
+   (missing&&ttsMode==="puter"?`（有 ${missing} 段改用本機語音備援）`:"");
+  if(!PB.abort&&auto){
+   await sleep(600);
+   // 等錄影器完整結束後才離開全螢幕，避免尾端畫面尺寸改變
+   await new Promise(r=>{const rc=REC.recorder;if(!rc)return r();rc.addEventListener("stop",()=>r(),{once:true});stopRecording();setTimeout(r,4000)});
+  }
+ }catch(e){
+  fail(e);
+ }finally{
+  if(REC.recorder&&REC.recorder.state==="inactive")stopRecording(); // 錄影尚未開始就中止：取消這次錄製
+  LIP.speaking=false;
+  PB.playing=false;PB.abort=false;PB.started=false;btn.textContent="▶ 播放";
+  leaveStage(cv);
+  if(window.vrm3d){vrm3d.busy=false;vrm3d.setPose(S.defaultPose||"natural")}
+ }
+}
+$("play-btn").onclick=()=>startPlay();
+
+// ---- 套用全域偏好（語音／插圖選項）：本機 AI 預設不使用 Puter，避免跳出登入視窗 ----
+function applyOpts(){
+ const o=P.opts,local=S.ai.provider!=="puter";
+ $("tts-mode").value=o?o.tts:(local?"webspeech":"puter");
+ $("usep").checked=o?!!o.usep:!local;
+ $("fill").checked=o?o.fill!==false:true;
+ $("autostop").checked=o?o.autostop!==false:true;
+ $("fsreal").checked=o?!!o.fsreal:false;
+ if(o&&o.voice){const sel=$("local-voice");if([...sel.options].some(x=>x.value===o.voice))sel.value=o.voice}
+}
+["tts-mode","usep","fill","local-voice","autostop","fsreal"].forEach(id=>$(id).addEventListener("change",savePrefs));
+
+// ---- 演員構圖調整（大小、位置、角度、俯仰、嘴型幅度） ----
+const AC_KEYS=["zoom","x","y","yaw","pitch","mouth"],AC_UNIT={zoom:"%",mouth:"%",yaw:"°",pitch:"°",x:" cm",y:" cm"};
+function paintActor(){AC_KEYS.forEach(k=>{$("ac-"+k).value=ACTOR[k];$("ac-"+k+"-v").textContent=ACTOR[k]+AC_UNIT[k]})}
+function setActor(k,v){
+ const el=$("ac-"+k);
+ ACTOR[k]=Math.max(+el.min,Math.min(+el.max,Math.round(v)));
+ $("ac-"+k).value=ACTOR[k];$("ac-"+k+"-v").textContent=ACTOR[k]+AC_UNIT[k];
+ savePrefs();
+}
+AC_KEYS.forEach(k=>$("ac-"+k).addEventListener("input",e=>setActor(k,+e.target.value)));
+$("ac-reset").onclick=()=>{Object.assign(ACTOR,ACTOR_DEF);paintActor();savePrefs();note("已重設演員構圖")};
+(function(){
+ const vp=$("vp");let drag=null;
+ vp.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY,yaw:ACTOR.yaw,pitch:ACTOR.pitch};vp.setPointerCapture(e.pointerId);vp.style.cursor="grabbing"});
+ vp.addEventListener("pointermove",e=>{if(!drag)return;setActor("yaw",drag.yaw+(e.clientX-drag.x)*0.6);setActor("pitch",drag.pitch+(e.clientY-drag.y)*0.3)});
+ const end=()=>{drag=null;vp.style.cursor="grab"};
+ vp.addEventListener("pointerup",end);vp.addEventListener("pointercancel",end);
+ vp.addEventListener("wheel",e=>{e.preventDefault();setActor("zoom",ACTOR.zoom*(e.deltaY<0?1.06:0.94))},{passive:false});
+})();
+
+load();applyOpts();render();paintActor();savePrefs();
+</script>
+
+<!-- 內建 3D VRM 引擎（11 款模型 + 離線 3D 備援 + 14 種 Pose） -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.2/lib/three-vrm.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from "three";
+import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+import {VRMLoaderPlugin,VRMUtils} from "@pixiv/three-vrm";
+
+const GH=(repo,branch,path)=>[
+ `https://raw.githubusercontent.com/${repo}/${branch}/${path}`,
+ `https://cdn.jsdelivr.net/gh/${repo}@${branch}/${path}`
+];
+const VRM_PRESETS=[
+ {id:"chatvrm-b",group:"ChatVRM 官方",name:"AvatarSample_B（預設・最輕量 6.7MB）",license:"VRoid Project / pixiv 授權，免標註",urls:GH("zoan37/ChatVRM","main","public/AvatarSample_B.vrm")},
+ {id:"orion",group:"CC0 公眾領域",name:"Orion（輕量 6.1MB）",license:"CC0 公眾領域（無使用限制）",urls:GH("madjin/vrm-samples","master","Avatar_Orion.vrm")},
+ {id:"vroid-a",group:"VRoid 官方範例",name:"AvatarSample_A（15.1MB）",license:"VRoid 範例模型使用條件",urls:GH("madjin/vrm-samples","master","vroid/stable/AvatarSample_A.vrm")},
+ {id:"vroid-b",group:"VRoid 官方範例",name:"AvatarSample_B VRM0（15.4MB）",license:"VRoid 範例模型使用條件",urls:GH("madjin/vrm-samples","master","vroid/stable/AvatarSample_B.vrm")},
+ {id:"vroid-c",group:"VRoid 官方範例",name:"AvatarSample_C（13.1MB）",license:"VRoid 範例模型使用條件",urls:GH("madjin/vrm-samples","master","vroid/stable/AvatarSample_C.vrm")},
+ {id:"vita",group:"CC0 公眾領域",name:"Vita（14.4MB）",license:"CC0 公眾領域",urls:GH("madjin/vrm-samples","master","vroid/beta/Vita.vrm")},
+ {id:"vivi",group:"CC0 公眾領域",name:"Vivi（18.1MB）",license:"CC0 公眾領域",urls:GH("madjin/vrm-samples","master","vroid/beta/Vivi.vrm")},
+ {id:"victoria",group:"CC0 公眾領域",name:"Victoria Rubin（15.5MB）",license:"CC0 公眾領域",urls:GH("madjin/vrm-samples","master","vroid/beta/Victoria_Rubin.vrm")},
+ {id:"sakurada",group:"CC0 公眾領域",name:"Sakurada Fumiriya（19.3MB）",license:"CC0 公眾領域",urls:GH("madjin/vrm-samples","master","vroid/beta/Sakurada_Fumiriya.vrm")},
+ {id:"shino",group:"CC0 公眾領域",name:"Sendagaya Shino（15.1MB）",license:"CC0 公眾領域",urls:GH("madjin/vrm-samples","master","vroid/beta/Sendagaya_Shino.vrm")},
+ {id:"seed-san",group:"需標註作者",name:"Seed-san（10.7MB）",license:"需標註作者：VirtualCast, Inc.",urls:GH("madjin/vrm-samples","master","Seed-san/vrm/Seed-san.vrm")}
+];
+
+const POSE_BONES=["leftShoulder","rightShoulder","leftUpperArm","rightUpperArm","leftLowerArm","rightLowerArm","leftHand","rightHand","spine","chest","neck","head"];
+
+const R=new THREE.WebGLRenderer({alpha:true,antialias:true});
+R.setClearColor(0x000000,0);
+R.outputColorSpace=THREE.SRGBColorSpace;
+
+const sc=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(28,320/480,0.1,20);
+const li=new THREE.DirectionalLight(0xffffff,2.1);
+li.position.set(1.2,2.2,2.0);
+const fillLi=new THREE.DirectionalLight(0xd8f3ec,0.8);
+fillLi.position.set(-1.2,1.0,-1.0);
+sc.add(li,fillLi,new THREE.AmbientLight(0xffffff,1.2));
+
+function createFallback3D(){
+ const root=new THREE.Group();
+ const headGroup=new THREE.Group(); headGroup.position.set(0,1.42,0);
+ const headMesh=new THREE.Mesh(new THREE.SphereGeometry(0.16,24,24),new THREE.MeshStandardMaterial({color:0xf8fafc,roughness:0.4}));
+ const eyeMat=new THREE.MeshBasicMaterial({color:0x1e293b});
+ const lEye=new THREE.Mesh(new THREE.SphereGeometry(0.022,12,12),eyeMat); lEye.position.set(-0.055,0.02,0.145);
+ const rEye=new THREE.Mesh(new THREE.SphereGeometry(0.022,12,12),eyeMat); rEye.position.set(0.055,0.02,0.145);
+ const mouthMesh=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.025,0.02),new THREE.MeshBasicMaterial({color:0xe11d48}));
+ mouthMesh.position.set(0,-0.055,0.15);
+ headGroup.add(headMesh,lEye,rEye,mouthMesh);
+
+ const spineGroup=new THREE.Group(); spineGroup.position.set(0,1.02,0);
+ const bodyMesh=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.14,0.38,20),new THREE.MeshStandardMaterial({color:0x1f6f5c,roughness:0.5}));
+ bodyMesh.position.y=0.18;
+ spineGroup.add(bodyMesh);
+
+ const makeArm=(side)=>{
+  const sh=new THREE.Group(); sh.position.set(side*0.16,0.34,0);
+  const lo=new THREE.Group(); lo.position.set(0,-0.17,0);
+  const m1=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.03,0.17,12),new THREE.MeshStandardMaterial({color:0xf8fafc,roughness:0.4}));
+  m1.position.y=-0.085;
+  const m2=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.026,0.16,12),new THREE.MeshStandardMaterial({color:0xf8fafc,roughness:0.4}));
+  m2.position.y=-0.08;
+  sh.add(m1,lo); lo.add(m2);
+  return {sh,lo};
+ };
+ const L=makeArm(-1),R_ARM=makeArm(1);
+ spineGroup.add(L.sh,R_ARM.sh);
+ root.add(spineGroup,headGroup);
+ return {root,headGroup,lEye,rEye,mouthMesh,spineGroup,L,R:R_ARM};
+}
+const fb3d=createFallback3D();
+sc.add(fb3d.root);
+fb3d.root.visible=false;
+
+let vrm=null,useFallback3D=false,mouth=0,headY=1.42,vrmBaseYaw=0;
+// 母音口型（參考 index.html）：說話時 aa/ih/ou/ee/oh 隨機平滑切換；靜音時嘴巴完全閉上
+const LV=["aa","ih","ou","ee","oh"],lipS={v:"aa",a:0,next:0,cur:{}};
+function lipUpdate(amp,dt){
+ const now=performance.now()/1000,gain=((window.ACTOR&&window.ACTOR.mouth)||100)/100,speaking=amp>0.08;
+ if(speaking&&now>lipS.next){
+  lipS.v=LV[(Math.random()*5)|0];
+  lipS.a=(0.3+Math.random()*0.5)*(0.6+Math.min(1,amp*2)*0.5)*gain;
+  lipS.next=now+0.08+Math.random()*0.1;
+ }
+ const k=Math.min(1,dt*18);let tot=0;
+ LV.forEach(n=>{
+  const tg=speaking&&n===lipS.v?Math.min(1,lipS.a):0,c=lipS.cur[n]||0;
+  lipS.cur[n]=c+(tg-c)*k;tot+=lipS.cur[n];
+ });
+ mouth=Math.min(1,tot);
+}
+let activePoseId=(window.S&&window.S.defaultPose)||"natural";
+const poseCur={};
+
+const bone=n=>vrm&&vrm.humanoid&&(vrm.humanoid.getNormalizedBoneNode(n)||vrm.humanoid.getRawBoneNode(n));
+
+function snapPose(id){
+ const p=(window.POSES||[]).find(x=>x.id===id)||(window.POSES&&window.POSES[0])||{b:{}};
+ POSE_BONES.forEach(n=>{poseCur[n]=[...(p.b[n]||[0,0,0])]});
+}
+
+function setPose(id){
+ activePoseId=(window.POSES||[]).some(x=>x.id===id)?id:"natural";
+}
+
+function applyFallbackPose(t,amp,poseId){
+ fb3d.root.visible=true;
+ const p=(window.POSES||[]).find(x=>x.id===poseId)||{id:"natural",b:{}};
+ lipUpdate(amp,1/30);
+ const blink=(t%4.2)>4.06?0.15:1;
+ fb3d.lEye.scale.y=blink; fb3d.rEye.scale.y=blink;
+ fb3d.mouthMesh.scale.y=0.15+mouth*2.6;
+ const bMap=p.b||{};
+ const lUp=bMap.leftUpperArm||[0,0,-1.3], lLo=bMap.leftLowerArm||[0,0,-0.15];
+ const rUp=bMap.rightUpperArm||[0,0,1.3], rLo=bMap.rightLowerArm||[0,0,0.15];
+ fb3d.L.sh.rotation.set(lUp[0],lUp[1],lUp[2]);
+ fb3d.L.lo.rotation.set(lLo[0],lLo[1],lLo[2]);
+ fb3d.R.sh.rotation.set(rUp[0],rUp[1],rUp[2]+(p.id==="waveR"?-0.25*Math.sin(t*7):0));
+ fb3d.R.lo.rotation.set(rLo[0],rLo[1],rLo[2]+(p.id==="waveR"?-0.35*Math.sin(t*7):0));
+ const sp=bMap.spine||[0,0,0], hd=bMap.head||[0,0,0];
+ fb3d.spineGroup.rotation.set(sp[0]+Math.cos(t*1.2)*0.015,sp[1]+Math.sin(t*0.8)*0.035,sp[2]);
+ fb3d.headGroup.rotation.set(hd[0]+Math.sin(t*1.3)*0.025,hd[1]+Math.sin(t*0.65)*0.05,hd[2]);
+}
+
+function lipLv(n){return lipS.cur[n]||0}
+
+function applyPoseFrame(t,amp,poseId,dt=1/30){
+ if(useFallback3D||!vrm){
+  applyFallbackPose(t,amp,poseId);
+  return;
+ }
+ fb3d.root.visible=false;
+ const isV0=vrm.meta?.metaVersion==="0";
+ const poses=window.POSES||[];
+ const p=poses.find(x=>x.id===poseId)||poses[0]||{id:"natural",b:{}};
+ lipUpdate(amp,dt);
+ const em=vrm.expressionManager;
+ if(em){
+  LV.forEach(n=>em.setValue(n,lipLv(n)));
+  em.setValue("blink",(t%4.2)>4.06?1:0);
+ }
+ const k=Math.min(1,dt*8);
+ POSE_BONES.forEach(n=>{
+  const target=(p.b&&p.b[n])||[0,0,0];
+  if(!poseCur[n])poseCur[n]=[0,0,0];
+  for(let i=0;i<3;i++)poseCur[n][i]+=(target[i]-poseCur[n][i])*k;
+  let [x,y,z]=poseCur[n];
+  if(n==="rightUpperArm"&&p.id==="waveR")z+=-0.12*Math.sin(t*7);
+  if(n==="rightLowerArm"&&p.id==="waveR")z+=-0.35*Math.sin(t*7);
+  if(n==="leftUpperArm"&&p.id==="waveL")z+=0.12*Math.sin(t*7);
+  if(n==="leftLowerArm"&&p.id==="waveL")z+=0.35*Math.sin(t*7);
+  if(n==="spine"){x+=Math.cos(t*1.2)*0.015;y+=Math.sin(t*0.8)*0.035;z+=Math.sin(t*1.5)*0.015}
+  if(n==="head"){x+=Math.sin(t*1.3)*0.025+mouth*0.04;y+=Math.sin(t*0.65)*0.05}
+  const b=bone(n);
+  if(b)b.rotation.set(isV0?-x:x,y,isV0?-z:z);
+ });
+ vrm.update(dt);
+}
+
+function draw(ctx,x,y,w,h,amp,t,poseId){
+ if(!vrm&&!useFallback3D)return;
+ if(R.domElement.width!==w||R.domElement.height!==h){
+  R.setSize(w,h,false);
+  cam.aspect=w/h;
+  cam.updateProjectionMatrix();
+ }
+ const A=Object.assign({zoom:100,x:0,y:0,yaw:0,pitch:0},window.ACTOR||{});
+ const yawR=A.yaw*Math.PI/180;
+ if(vrm)vrm.scene.rotation.y=vrmBaseYaw+yawR;
+ fb3d.root.rotation.y=yawR;
+ applyPoseFrame(t,amp,poseId||activePoseId,1/30);
+ // 預設：畫面上緣高於頭頂約 0.1 m，頭部完整入鏡；縮放只改變鏡頭距離，不再裁頭
+ const half=0.58/Math.max(0.3,A.zoom/100),dist=half/Math.tan(cam.fov*Math.PI/360);
+ const tx=A.x/100,ty=headY-0.25+A.y/100,pr=A.pitch*Math.PI/180;
+ cam.position.set(tx,ty+Math.sin(pr)*dist,Math.cos(pr)*dist);
+ cam.lookAt(tx,ty,0);
+ R.render(sc,cam);
+ ctx.drawImage(R.domElement,x,y,w,h);
+}
+
+async function loadVRMFromUrl(url,label){
+ const ld=new GLTFLoader();
+ ld.register(p=>new VRMLoaderPlugin(p));
+ const g=await ld.loadAsync(url);
+ const v=g.userData.vrm;
+ if(!v)throw new Error("這不是有效的 VRM 檔案");
+ if(vrm){sc.remove(vrm.scene);VRMUtils.deepDispose(vrm.scene)}
+ VRMUtils.removeUnnecessaryVertices(g.scene);
+ VRMUtils.rotateVRM0(v);
+ vrmBaseYaw=v.scene.rotation.y;
+ vrm=v;
+ useFallback3D=false;
+ sc.add(v.scene);
+ v.scene.updateMatrixWorld(true);
+ const hb=bone("head");
+ headY=hb?hb.getWorldPosition(new THREE.Vector3()).y:1.42;
+ snapPose(activePoseId);
+ applyPoseFrame(0,0,activePoseId,1/30);
+ document.getElementById("vrm-status").textContent="目前 3D 講師："+label;
+}
+
+async function loadPresetById(id){
+ const p=VRM_PRESETS.find(x=>x.id===id)||VRM_PRESETS[0];
+ const st=document.getElementById("vrm-status");
+ document.getElementById("vrm-license").textContent=p.license;
+ st.textContent=`正在下載內建模型「${p.name}」…`;
+ for(const url of p.urls){
+  try{
+   await loadVRMFromUrl(url,p.name);
+   window.say("已載入內建 3D 講師："+p.name,3000);
+   return;
+  }catch(e){
+   console.warn("VRM 來源失敗，嘗試備援:",url,e);
+  }
+ }
+ useFallback3D=true;
+ headY=1.42;
+ snapPose(activePoseId);
+ st.textContent="外部 VRM 無法連線，已啟用內建 3D 講師備援角色";
+ window.say("外部 VRM 無法連線，已啟用內建 3D 講師備援",4000);
+}
+
+function initPresetSelect(){
+ const sel=document.getElementById("vrm-preset");
+ const groups={};
+ VRM_PRESETS.forEach(p=>{
+  if(!groups[p.group]){
+   const og=document.createElement("optgroup");
+   og.label=p.group;
+   sel.appendChild(og);
+   groups[p.group]=og;
+  }
+  const op=document.createElement("option");
+  op.value=p.id;
+  op.textContent=p.name;
+  groups[p.group].appendChild(op);
+ });
+ sel.value=(window.S&&window.S.presetId)||"chatvrm-b";
+ sel.onchange=e=>{
+  if(window.S){window.S.presetId=e.target.value;localStorage.setItem("course-pipeline-v5",JSON.stringify(window.S));window.savePrefs&&window.savePrefs()}
+  loadPresetById(e.target.value);
+ };
+ loadPresetById(sel.value);
+}
+
+const vp=document.getElementById("vp"),pc=vp.getContext("2d");
+(function loop(){
+ requestAnimationFrame(loop);
+ if((!vrm&&!useFallback3D)||window.vrm3d?.busy||vp.hidden)return;
+ pc.clearRect(0,0,vp.width,vp.height);
+ const t=performance.now()/1000;
+ draw(pc,0,0,vp.width,vp.height,0,t,activePoseId); // 預覽不發聲，嘴巴保持閉合
+})();
+
+window.vrm3d={has:()=>!!(vrm||useFallback3D),draw,setPose,busy:false};
+initPresetSelect();
+
+document.getElementById("vrm").onchange=async e=>{
+ const f=e.target.files[0];if(!f)return;
+ const url=URL.createObjectURL(f);
+ try{
+  window.say("讀取自訂 VRM 中…",15000);
+  await loadVRMFromUrl(url,f.name);
+  window.say("已載入自訂 3D 講師："+f.name,4000);
+ }catch(err){
+  window.say("VRM 載入失敗："+err.message);
+ }finally{
+  URL.revokeObjectURL(url);
+ }
+};
+</script>
+</body>
+</html>
